@@ -26,7 +26,7 @@ describe('SOW lesson generation scope', () => {
     expect(instruction).toContain('selected uploaded Scheme of Work is the authoritative source');
     expect(instruction).toContain('do not assume or claim that its KICD alignment has been independently verified');
     expect(instruction).toContain('Do not perform a second KICD/canonical-curriculum alignment');
-    expect(instruction).toContain('Do not block generation because a separate canonical curriculum record');
+    expect(instruction).toContain('Do not block generation merely because a separate canonical curriculum record');
     expect(instruction).toContain('selected lesson identity, provenance, metadata consistency');
     expect(instruction).toContain('does not authorize generation of a new AI-created Scheme of Work');
     expect(instruction).not.toContain('Strictly align with KICD, CBC, and CBE standards for Grades 1-10');

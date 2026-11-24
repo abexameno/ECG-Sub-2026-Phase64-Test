@@ -764,6 +764,7 @@ Do not include adjacent lessons, other weeks, other strands, or a broader topic 
 Do not invent absent source fields or describe generated additions as content copied from the SOW.
 `;
 }
+
 async function generateTextContent(formState: FormState, systemInstruction: string, teacherName: string = 'Teacher', schoolName: string = 'School'): Promise<GeneratedContent> {
     const { grade, subject, topic, contentType, imageSize, additionalInformation, additionalInstructions } = formState;
     const curriculumContext = getCurriculumContext(grade, subject);
