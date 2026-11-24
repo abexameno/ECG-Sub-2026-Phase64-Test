@@ -20,7 +20,7 @@ describe('Scheme of Work PDF column overflow', () => {
           lesson: String((index % 5) + 1),
           strand: `Strand ${index + 1}`,
           subStrand: `Sub-strand ${index + 1}`,
-          learningOutcomes: `Learning outcome ${index + 1}`,
+          learningOutcomes: index === 0 ? 'Use C# examples and calculate 2*3 accurately.' : `Learning outcome ${index + 1}`,
           inquiryQuestions: `Inquiry question ${index + 1}`,
           learningExperiences: `Learning experience ${index + 1}`,
           learningResources: `Resource ${index + 1}`,
@@ -79,6 +79,7 @@ describe('Scheme of Work PDF column overflow', () => {
     expect(table.table.body[1][0].text).toBe('1');
     expect(table.table.body[1][1].text).toBe('1');
     expect(table.table.body[1][2].text).toBe('Strand 1');
+    expect(table.table.body[1][4].stack[0].text[0].text).toContain('C# examples and calculate 2*3');
     expect(table.table.body[26][0].text).toBe('6');
     expect(table.table.body[26][1].text).toBe('1');
     expect(table.table.body[26][2].text).toBe('Strand 26');
