@@ -1012,18 +1012,29 @@ Generate a student-friendly Study Guide for **${grade} ${subject}** on the topic
     };
 }
 
-export async function generateContent(formState: FormState, teacherName?: string, schoolName?: string, onProgress?: (progress: number) => void): Promise<GeneratedContent> {
-    const systemInstruction = `You are Exameno ECG Assistant, an expert in Kenyan CBC/CBE Curriculum, KICD Learning Designs, and Educational Assessment. 
-    
-    CURRICULUM STANDARDS:
+export function buildGenerationSystemInstruction(isUploadedSowBound: boolean): string {
+    const curriculumAuthority = isUploadedSowBound
+        ? `UPLOADED SOW SOURCE OF TRUTH:
+    - The selected uploaded Scheme of Work is an approved, KICD-derived source and is authoritative for its own grade, subject, term plan, lesson sequence, and curriculum fields.
+    - Do not perform a second KICD/canonical-curriculum alignment or term-allocation validation for this SOW-bound resource.
+    - Do not block generation because a separate canonical curriculum record, term allocation, authority status, or curriculum-verification flag is absent.
+    - Preserve the selected SOW lesson's supplied grade, subject, term, week, lesson, strand, sub-strand, outcomes, inquiry questions, experiences, resources, assessment methods, and remarks.
+    - Keep generation confined to the selected lesson. Never invent missing source fields or claim invented values came from the uploaded SOW.
+    - Retain technical checks for source readability, extraction completeness, required structure, selected lesson identity, provenance, metadata consistency, and safe data handling.
+    - This uploaded-SOW rule does not authorize generation of a new AI-created Scheme of Work without the separate canonical eligibility and scheduling checks.`
+        : `CURRICULUM STANDARDS:
     - Strictly align with KICD, CBC, and CBE standards for Grades 1-10.
     - Never invent strands, sub-strands, specific learning outcomes, or content standards.
-    - Coverage: Grade 1-6 (Primary), 7-9 (Junior), 10 (Senior).
+    - Coverage: Grade 1-6 (Primary), 7-9 (Junior), 10 (Senior).`;
+
+    return `You are Exameno ECG Assistant, an expert in Kenyan CBC/CBE Curriculum, KICD Learning Designs, and Educational Assessment.
+
+    ${curriculumAuthority}
 
     QUESTION GENERATION RULES (MCQ):
     - Use four options only (A, B, C, D).
     - Provide exactly one correct answer.
-    - Use format: Question text\nA) Option 1\nB) Option 2\nC) Option 3\nD) Option 4\nANSWER: C
+    - Use format: Question text\\nA) Option 1\\nB) Option 2\\nC) Option 3\\nD) Option 4\\nANSWER: C
     - Avoid "All/None of the above". Use British English.
 
     CONTENT STRUCTURES:
@@ -1033,8 +1044,12 @@ export async function generateContent(formState: FormState, teacherName?: string
 
     GENERAL GUIDELINES:
     - British English spelling. Professional, clear, and concise.
-    - Priority: Accuracy > Curriculum Alignment > Educational Value > Formatting.
+    - Priority: Accuracy > Educational Value > Formatting.
     - Never sacrifice accuracy for brevity. Include clear marking schemes.`;
+}
+
+export async function generateContent(formState: FormState, teacherName?: string, schoolName?: string, onProgress?: (progress: number) => void): Promise<GeneratedContent> {
+    const systemInstruction = buildGenerationSystemInstruction(!!formState.sowLessonContext);
     
     if (onProgress) onProgress(5); // Initial start
 
