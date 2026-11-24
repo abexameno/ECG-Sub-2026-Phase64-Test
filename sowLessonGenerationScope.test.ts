@@ -1,5 +1,5 @@
 import { ContentType } from './types.ts';
-import { buildGenerationSystemInstruction, buildSowLessonScopePrompt } from './services/geminiService.ts';
+import { buildGenerationSystemInstruction, buildSowLessonScopePrompt, buildSowScopedResourcePrompt } from './services/geminiService.ts';
 
 const selectedLesson = {
   sowTitle: 'Grade 8 - Pre-technical Studies - Term 2',
@@ -23,7 +23,8 @@ const selectedLesson = {
 describe('SOW lesson generation scope', () => {
   it('uses the uploaded SOW as curriculum authority without weakening technical integrity checks', () => {
     const instruction = buildGenerationSystemInstruction(true);
-    expect(instruction).toContain('selected uploaded Scheme of Work is an approved, KICD-derived source');
+    expect(instruction).toContain('selected uploaded Scheme of Work is the authoritative source');
+    expect(instruction).toContain('do not assume or claim that its KICD alignment has been independently verified');
     expect(instruction).toContain('Do not perform a second KICD/canonical-curriculum alignment');
     expect(instruction).toContain('Do not block generation because a separate canonical curriculum record');
     expect(instruction).toContain('selected lesson identity, provenance, metadata consistency');
@@ -56,6 +57,23 @@ describe('SOW lesson generation scope', () => {
     expect(prompt).toContain(selectedLesson.sowTitle);
   });
 
+  it('keeps Study Guides generated from an uploaded SOW confined to the selected lesson', () => {
+    const prompt = buildSowScopedResourcePrompt(selectedLesson, ContentType.StudyGuide);
+    expect(prompt).toContain('Create a learner-friendly study guide for this selected lesson only');
+    expect(prompt).toContain('Week 4, Lesson 2');
+    expect(prompt).toContain(selectedLesson.learningOutcomes);
+    expect(prompt).toContain(selectedLesson.learningExperiences);
+    expect(prompt).toContain('Do not introduce content from other lessons or weeks');
+    expect(prompt).not.toContain('Continue with more lessons and weeks');
+  });
+
+  it('keeps generic SOW-bound resources within the selected lesson', () => {
+    const prompt = buildSowScopedResourcePrompt(selectedLesson, ContentType.LessonPlan);
+    expect(prompt).toContain('Create the requested Lesson Plan for the selected SOW lesson only');
+    expect(prompt).toContain('Week 4, Lesson 2');
+    expect(prompt).toContain(selectedLesson.learningOutcomes);
+    expect(prompt).toContain('Do not include adjacent lessons, other weeks');
+  });
   it('does not manufacture absent SOW source fields', () => {
     const prompt = buildSowLessonScopePrompt({
       week: '1',

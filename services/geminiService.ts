@@ -724,6 +724,46 @@ The output must identify Week ${context.week}, Lesson ${context.lesson}, and rem
 `;
 }
 
+export function buildSowScopedResourcePrompt(
+    context: NonNullable<FormState['sowLessonContext']>,
+    contentType: ContentType
+): string {
+    const scope = buildSowLessonScopePrompt(context, contentType);
+    if (contentType === ContentType.StudyGuide ||
+        (contentType as string) === 'Students Study Guides' ||
+        (contentType as string) === 'Learner Study Guide') {
+        return `${scope}
+# ${context.grade || 'Selected grade'} ${context.subject || 'Selected subject'}: Lesson Study Guide
+
+Create a learner-friendly study guide for this selected lesson only.
+
+## Lesson Summary
+Summarise the selected lesson's supplied learning outcomes accurately.
+
+## Key Concepts
+Explain only concepts needed to achieve the supplied learning outcomes. Do not introduce content from other lessons or weeks.
+
+## Learning Activities and Examples
+Use the supplied learning experiences as the basis for relevant explanations and examples. Clearly distinguish helpful elaboration from source-provided content.
+
+## Practice Questions
+Create grade-appropriate questions that assess only the selected lesson's stated learning outcomes.
+
+## Answers
+Provide accurate answers to the practice questions.
+
+## Lesson Recap
+Reinforce the key learning from this selected lesson only.
+`;
+    }
+
+    return `${scope}
+Create the requested ${contentType} for the selected SOW lesson only.
+Use the supplied learning outcomes to define the scope. Elaborate only where directly necessary to support those outcomes.
+Do not include adjacent lessons, other weeks, other strands, or a broader topic series.
+Do not invent absent source fields or describe generated additions as content copied from the SOW.
+`;
+}
 async function generateTextContent(formState: FormState, systemInstruction: string, teacherName: string = 'Teacher', schoolName: string = 'School'): Promise<GeneratedContent> {
     const { grade, subject, topic, contentType, imageSize, additionalInformation, additionalInstructions } = formState;
     const curriculumContext = getCurriculumContext(grade, subject);
@@ -877,7 +917,7 @@ Use the supplied assessment method and provide focused checks aligned to the out
 Summarise the key learning from this lesson.
 `;
         } else {
-        prompt = `**CRITICAL INSTRUCTION: The entire output must be formatted using professional Markdown. Use headings (#, ##, ###, ####, #####), lists (* or - or 1.), and bold text (**) for structure and emphasis. Follow this structure precisely. STRICT RULE: DO NOT INCLUDE ANY IMAGES.**
+            prompt = `**CRITICAL INSTRUCTION: The entire output must be formatted using professional Markdown. Use headings (#, ##, ###, ####, #####), lists (* or - or 1.), and bold text (**) for structure and emphasis. Follow this structure precisely. STRICT RULE: DO NOT INCLUDE ANY IMAGES.**
 
 Generate comprehensive Teacher's Lesson Notes for **${grade} ${subject}** on the topic: **"${topic}"**. The notes should guide a teacher through delivering a series of lessons over several weeks.
 
@@ -920,6 +960,10 @@ Generate comprehensive Teacher's Lesson Notes for **${grade} ${subject}** on the
 `;
         }
     } else if (contentType === ContentType.StudyGuide || (contentType as string) === 'Students Study Guides' || (contentType as string) === 'Learner Study Guide') {
+        if (formState.sowLessonContext) {
+            prompt = buildSowScopedResourcePrompt(formState.sowLessonContext, contentType);
+        } else {
+
         effectiveSystemInstruction = `You are a curriculum expert creating a supportive, student-facing study guide for the Kenyan CBC. The tone must be encouraging and the content easy to navigate. The guide should be broken down into individual lessons, each with a summary, key points, practice questions, and answers, strictly following the provided structure. Use professional Markdown.\n\n**IMPORTANT FORMATTING RULE:** Do NOT use ALL CAPS for headings, text, or any UI elements. Use proper, sentence-case or title-case for all text as appropriate.`;
         
         prompt = `**CRITICAL INSTRUCTION: The entire output must be formatted using professional Markdown. Use headings (#, ##, ###, ####, #####), lists (* or 1.), italics (*), and bold text (**). Follow this structure precisely.**
@@ -959,8 +1003,11 @@ Generate a student-friendly Study Guide for **${grade} ${subject}** on the topic
 ### Conclusion
 *[AI: Write a final summary paragraph encouraging the student and recapping the overall importance of the topic.]*
 `;
+        }
     } else { // Generic fallback
-        prompt = `Generate a high-utility ${contentType} for ${grade} ${subject} on "${topic}". Use professional Markdown. Context: ${curriculumContext}`;
+        prompt = formState.sowLessonContext
+            ? buildSowScopedResourcePrompt(formState.sowLessonContext, contentType)
+            : `Generate a high-utility ${contentType} for ${grade} ${subject} on "${topic}". Use professional Markdown. Context: ${curriculumContext}`;
     }
     
     if (additionalInformation) prompt += `\n\n**Teacher Context/Notes:**\n${additionalInformation}\n`;
@@ -1015,11 +1062,12 @@ Generate a student-friendly Study Guide for **${grade} ${subject}** on the topic
 export function buildGenerationSystemInstruction(isUploadedSowBound: boolean): string {
     const curriculumAuthority = isUploadedSowBound
         ? `UPLOADED SOW SOURCE OF TRUTH:
-    - The selected uploaded Scheme of Work is an approved, KICD-derived source and is authoritative for its own grade, subject, term plan, lesson sequence, and curriculum fields.
-    - Do not perform a second KICD/canonical-curriculum alignment or term-allocation validation for this SOW-bound resource.
-    - Do not block generation because a separate canonical curriculum record, term allocation, authority status, or curriculum-verification flag is absent.
+    - The selected uploaded Scheme of Work is the authoritative source for its own grade, subject, term plan, lesson sequence, and supplied curriculum fields.
+    - Treat the uploaded document as the source provided by the school/user; do not assume or claim that its KICD alignment has been independently verified.
+    - Do not perform a second KICD/canonical-curriculum alignment or term-allocation validation for a resource generated from this selected uploaded SOW lesson.
+    - Do not block generation merely because a separate canonical curriculum record, term allocation, authority status, or curriculum-verification flag is absent.
     - Preserve the selected SOW lesson's supplied grade, subject, term, week, lesson, strand, sub-strand, outcomes, inquiry questions, experiences, resources, assessment methods, and remarks.
-    - Keep generation confined to the selected lesson. Never invent missing source fields or claim invented values came from the uploaded SOW.
+    - Keep every SOW-bound resource confined to the selected lesson. Never invent missing source fields or claim invented values came from the uploaded SOW.
     - Retain technical checks for source readability, extraction completeness, required structure, selected lesson identity, provenance, metadata consistency, and safe data handling.
     - This uploaded-SOW rule does not authorize generation of a new AI-created Scheme of Work without the separate canonical eligibility and scheduling checks.`
         : `CURRICULUM STANDARDS:
