@@ -152,8 +152,13 @@ export function populateSowTemplateDocumentXml(documentXml: string, payload: Sow
     if (sectionStart < 0) throw new Error('SOW_TEMPLATE_QA_SECTION_BOUNDARY_INVALID');
     xml = xml.slice(0, cutStart) + xml.slice(sectionStart);
   }
-  // The continuation note is an instruction for the blank master, not SOW content.
-  xml = xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?Continuation page — repeat the ten-column table header[\s\S]*?<\/w:p>/, '');
+  // Remove only the paragraph containing the blank-master continuation instruction.
+  const continuationParagraph = [...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)]
+    .find(match => match[0].includes('Continuation page — repeat the ten-column table header'));
+  if (continuationParagraph) {
+    const continuationStart = continuationParagraph.index!;
+    xml = xml.slice(0, continuationStart) + xml.slice(continuationStart + continuationParagraph[0].length);
+  }
   const title = `${payload.grade} • ${payload.subject} • ${payload.term} • ${payload.year}`;
   xml = xml.replace('CBC / CBE CURRICULUM  •  EXAMENO MASTER TEMPLATE', xmlEscape(title));
   return xml;
