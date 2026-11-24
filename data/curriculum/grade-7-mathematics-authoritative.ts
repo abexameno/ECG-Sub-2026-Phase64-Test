@@ -8,8 +8,10 @@
  *
  * IMPORTANT: KICD gives full-grade suggested lesson allocations, but this
  * summary does not assign each sub-strand to Term 1, Term 2, or Term 3.
- * Do not infer term assignments from this list. Generation remains blocked
- * until a source that establishes term-level sequencing is verified.
+ * The user has confirmed that the uploaded Grade 7 Mathematics Term 1 2026
+ * Scheme of Work is the actual school-approved term plan. That verifies the
+ * school's term sequence, not a nationally mandated KICD term allocation.
+ * Curriculum-outcome alignment remains a separate release gate.
  */
 export type Grade7MathematicsSubStrandAllocation = {
   code: string;
@@ -25,7 +27,13 @@ export const GRADE_7_MATHEMATICS_SOURCE = {
   sourcePage: 'xii',
   sourceUrl: 'https://kicd.ac.ke/wp-content/uploads/2024/06/Mathematics-Grade-7-Design-Formated-April-2024.pdf',
   authorityStatus: 'AUTHORITATIVE_FULL_GRADE_ALLOCATION_VERIFIED',
-  termAllocationStatus: 'UNVERIFIED',
+  termAllocationStatus: 'SCHOOL_APPROVED_SEQUENCE_VERIFIED',
+  termAllocationSource: 'TERM-1-GRADE-7-MATHEMATICS-SCHEMES-OF-WORK(2).pdf',
+  termAllocationAcademicYear: 2026,
+  termAllocationGrade: 7,
+  termAllocationTerm: 1,
+  termAllocationApproval: 'USER_CONFIRMED_SCHOOL_APPROVED',
+  curriculumAlignmentStatus: 'PENDING_LINE_BY_LINE_KICD_VALIDATION',
   expectedFullGradeLessonTotal: 150,
 } as const;
 

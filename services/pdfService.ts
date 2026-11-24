@@ -54,7 +54,9 @@ function cleanText(value: unknown): string {
         return '';
     };
 
-    return toText(value, new WeakSet<object>()).replace(/[*#]/g, '').trim();
+    // Preserve literal curriculum notation (for example C# and 2*3). Markdown
+    // formatting is handled by parseMarkdownToPdfmake, not by deleting characters.
+    return toText(value, new WeakSet<object>()).trim();
 }
 
 function isValidImageUri(uri?: string): boolean {
@@ -466,7 +468,7 @@ export function buildItemPdfContent(
 
         itemContent.push({ canvas: [{ type: 'line', x1: 50, y1: 5, x2: (isTabular ? 700 : 455), y2: 5, lineWidth: 0.5, lineColor: '#95A5A6' }], margin: [0, 5, 0, 20] });
 
-        if (content.metadata) {
+        if (content.metadata && !content.schemeOfWorkData) {
             itemContent.push({ 
                 text: `${content.metadata.grade} - ${content.metadata.subject} - ${content.metadata.contentType} : Content covering the following curriculum topics:`, 
                 style: 'coverageHeader' 
@@ -479,18 +481,36 @@ export function buildItemPdfContent(
         }
 
         if (content.schemeOfWorkData) {
+            const sow = content.schemeOfWorkData;
+            const school = (headerInfo?.schoolName || (content as any).schoolName || '').trim();
+            const teacher = (headerInfo?.teacherName || sow.teacher || '').trim();
+            const year = (headerInfo?.academicYear || (content.metadata as any)?.academicYear || new Date().getFullYear()).toString();
+            const metadataLine = [
+                { text: 'Grade: ', bold: true, color: '#54258A' }, { text: cleanText(sow.grade || content.metadata?.grade) || ' ' },
+                { text: '    Subject: ', bold: true, color: '#54258A' }, { text: cleanText(sow.subject || content.metadata?.subject) || ' ' },
+                { text: '    Term: ', bold: true, color: '#54258A' }, { text: cleanText(sow.term || content.metadata?.term) || ' ' },
+                { text: '    Year: ', bold: true, color: '#54258A' }, { text: year || ' ' },
+                { text: '    Teacher: ', bold: true, color: '#54258A' }, { text: teacher || ' ' },
+                { text: '    TSC / School: ', bold: true, color: '#54258A' }, { text: [headerInfo?.tscNumber, school].filter(Boolean).join(' / ') || ' ' }
+            ];
+            // Keep the lesson grid as the first table in the PDF definition; older
+            // consumers and regression checks rely on its ten-column structure.
+            itemContent.push({ text: metadataLine, fontSize: 8, margin: [0, 0, 0, 8] });
+        }
+
+        if (content.schemeOfWorkData) {
             const body: any[] = [];
             body.push([
-                { text: 'Week', style: 'tableHeader', alignment: 'center' },
-                { text: 'Lesson', style: 'tableHeader', alignment: 'center' },
-                { text: 'Strand', style: 'tableHeader' },
-                { text: 'Sub-Strand', style: 'tableHeader' },
-                { text: 'Specific Learning Outcomes', style: 'tableHeader' },
-                { text: 'Learning Experiences', style: 'tableHeader' },
-                { text: 'Key Inquiry Questions', style: 'tableHeader' },
-                { text: 'Learning Resources', style: 'tableHeader' },
-                { text: 'Assessment Methods', style: 'tableHeader' },
-                { text: 'Remarks', style: 'tableHeader' },
+                { text: 'Week', style: 'sowTableHeader', alignment: 'center' },
+                { text: 'Lesson', style: 'sowTableHeader', alignment: 'center' },
+                { text: 'Strand', style: 'sowTableHeader' },
+                { text: 'Sub-Strand', style: 'sowTableHeader' },
+                { text: 'Specific Learning Outcomes', style: 'sowTableHeader' },
+                { text: 'Learning Experiences', style: 'sowTableHeader' },
+                { text: 'Key Inquiry Questions', style: 'sowTableHeader' },
+                { text: 'Learning Resources', style: 'sowTableHeader' },
+                { text: 'Assessment Methods', style: 'sowTableHeader' },
+                { text: 'Remarks', style: 'sowTableHeader' },
             ]);
             content.schemeOfWorkData.entries.forEach(e => {
                 const outcomesVal = e.learningOutcomes || (e as any).specificLearningOutcomes || (e as any).learningOutcomesText || ' ';
@@ -698,6 +718,7 @@ export function buildPdfDocDefinition(
             explanationBlock: { margin: [30, 0, 0, 15], color: '#555555', fontSize: 10 },
             extraHeader: { fontSize: 16, bold: true, color: '#FFFFFF', background: BRAND_COLOR, margin: [0, 30, 0, 10], padding: [10, 5] },
             tableHeader: { bold: true, fontSize: 9, color: 'black', fillColor: '#EEEEEE' },
+            sowTableHeader: { bold: true, fontSize: 8, color: '#FFFFFF', fillColor: '#54258A' },
             tableBody: { fontSize: 8 },
             coverHeader: { fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 5] },
             coverSubheader: { fontSize: 14, alignment: 'center', margin: [0, 0, 0, 20], italics: true },
@@ -817,6 +838,7 @@ export function buildMergedPdfDocDefinition(
             explanationBlock: { margin: [30, 0, 0, 15], color: '#555555', fontSize: 10 },
             extraHeader: { fontSize: 16, bold: true, color: '#FFFFFF', background: BRAND_COLOR, margin: [0, 30, 0, 10], padding: [10, 5] },
             tableHeader: { bold: true, fontSize: 9, color: 'black', fillColor: '#EEEEEE' },
+            sowTableHeader: { bold: true, fontSize: 8, color: '#FFFFFF', fillColor: '#54258A' },
             tableBody: { fontSize: 8 },
             coverHeader: { fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 5] },
             coverSubheader: { fontSize: 14, alignment: 'center', margin: [0, 0, 0, 20], italics: true },
@@ -1041,7 +1063,8 @@ export async function formatAuditReportAsPdf(
         styles: {
             brandHeader: { fontSize: 12, bold: true, color: '#3b1464' },
             reportTitle: { fontSize: 16, bold: true, color: '#0f172a', margin: [0, 2, 0, 8] },
-            tableHeader: { bold: true, fontSize: 9, fillColor: '#f8fafc', color: '#475569' }
+            tableHeader: { bold: true, fontSize: 9, fillColor: '#f8fafc', color: '#475569' },
+            sowTableHeader: { bold: true, fontSize: 8, fillColor: '#54258A', color: '#FFFFFF' }
         },
         defaultStyle: { font: 'Roboto', fontSize: 10 }
     };

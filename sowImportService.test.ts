@@ -57,6 +57,10 @@ describe('parseUploadedSowText', () => {
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0]).toMatchObject({ week: '1', lesson: '1', strand: 'NUMBERS', subStrand: 'Whole Numbers Place Value' });
     expect(result.entries[0].sourcePage).toBe(2);
+    // The source's final "Ref l" column contains reference-book/page values.
+    // Preserve them in the ten-column Exameno template's Remarks field.
+    expect(result.entries[0].remarks).toBe('21-23');
+    expect(result.warnings).toContain('The source Reference/Ref column was preserved in the Exameno Remarks field because the ten-column export template has no separate Reference column.');
     expect(result.quality.lessonCount).toBe(1);
     expect(result.quality.status).toBe('review');
     expect(result.quality.score).toBeGreaterThan(0);

@@ -8,6 +8,7 @@ declare const PptxGenJS: any;
 
 import { GeneratedQuestion, QuestionType, GeneratedContent, ExportHeaderInfo, AssessmentExportType, ContentType } from '../types.ts';
 import { waitForGlobal } from '../utils/waitForGlobal.ts';
+import { formatSowAsDocx } from './sowMasterTemplateExportService.ts';
 
 const BRAND_COLOR = '064e3b'; // Dark Green (Emerald 900)
 
@@ -85,6 +86,11 @@ export function generateFilename(content: GeneratedContent, extension: string, a
     const cleanGrade = (grade || 'Grade').trim();
     const cleanType = (contentType || 'Document').trim();
     const year = (content.metadata as any)?.academicYear || new Date().getFullYear();
+    if (content.schemeOfWorkData) {
+        const sowTerm = content.schemeOfWorkData.term || (content.metadata as any)?.term || terms?.[0] || 'Term';
+        const sowFilename = `${cleanGrade} - ${cleanSubject} - ${sowTerm} - ${year}`;
+        return `${sowFilename.replace(/[\\\\/:*?"<>|]/g, '_')}.${extension}`;
+    }
     
     let termSuffix = '';
     if (terms && terms.length > 0) {
@@ -875,6 +881,8 @@ function base64ToUint8Array(base64: string) {
 
 
 export async function formatAsDocx(content: GeneratedContent, assessmentExportType: AssessmentExportType, headerInfo?: ExportHeaderInfo): Promise<Blob> {
+    // Every SOW Word export must be populated from the approved Exameno master template.
+    if (content.schemeOfWorkData) return formatSowAsDocx(content, headerInfo);
     const docx = await waitForGlobal('docx');
     const { Document, Packer, Paragraph, TextRun, AlignmentType, Footer, PageNumber, BorderStyle, PageBreak, Table, TableRow, TableCell, WidthType, HeadingLevel, ImageRun } = docx;
     
@@ -1049,8 +1057,9 @@ export async function formatAsDocx(content: GeneratedContent, assessmentExportTy
             spacing: { before: 800, after: 100 }
         }));
         
-        const subTitleText = (content.metadata?.contentType === ContentType.SchemeOfWork && content.schemeOfWorkData?.term)
-            ? `${content.metadata.contentType} (${content.schemeOfWorkData.term})`
+        const sowDataForExport = (content as unknown as { schemeOfWorkData?: { term?: string; entries: any[] } }).schemeOfWorkData;
+        const subTitleText = (content.metadata?.contentType === ContentType.SchemeOfWork && sowDataForExport?.term)
+            ? `${content.metadata.contentType} (${sowDataForExport.term})`
             : content.metadata?.contentType || 'Study Guide';
 
         children.push(new Paragraph({
@@ -1059,7 +1068,7 @@ export async function formatAsDocx(content: GeneratedContent, assessmentExportTy
             spacing: { after: 300 }
         }));
         
-        if (content.schemeOfWorkData) {
+        if (sowDataForExport) {
             const headers = ['Week', 'Lesson', 'Strand', 'Sub-Strand', 'Specific Learning Outcomes', 'Learning Experiences', 'Key Inquiry Questions', 'Learning Resources', 'Assessment Methods', 'Remarks'];
             const headerRow = new TableRow({
                 tableHeader: true,
@@ -1069,7 +1078,7 @@ export async function formatAsDocx(content: GeneratedContent, assessmentExportTy
                 })),
             });
     
-            const dataRows = content.schemeOfWorkData.entries.map(entry => {
+            const dataRows = sowDataForExport.entries.map((entry: any) => {
                 const outcomesVal = entry.learningOutcomes || (entry as any).specificLearningOutcomes || (entry as any).learningOutcomesText || '';
                 const inquiryVal = entry.inquiryQuestions || (entry as any).keyInquiryQuestions || '';
                 const experiencesVal = entry.learningExperiences || (entry as any).content || (entry as any).learningExperience || '';

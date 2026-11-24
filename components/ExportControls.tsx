@@ -130,7 +130,8 @@ export const ExportControls: React.FC<ExportControlsProps> = ({
  const isEducatorOrAdmin = !currentUser || ['Admin', 'School Admin', 'Teacher'].includes(currentUser.role);
 
  const buttons = [
- { format: ExportFormat.PDF, icon: ICONS.pdf, className: "bg-red-600 hover:bg-red-700 border-red-700", label: "PDF", description: "Best for printing and sharing" },
+ isSOW && { format: ExportFormat.Word, icon: ICONS.word, className: "bg-blue-600 hover:bg-blue-700 border-blue-700", label: "Word — Master Template", description: "Primary editable SOW document" },
+ { format: ExportFormat.PDF, icon: ICONS.pdf, className: "bg-red-600 hover:bg-red-700 border-red-700", label: "PDF", description: "Printing and sharing" },
  !isSOW && { format: ExportFormat.Word, icon: ICONS.word, className: "bg-blue-600 hover:bg-blue-700 border-blue-700", label: "Word", description: "Editable document" },
  (isAssessment || isTabular) && { format: ExportFormat.Excel, icon: ICONS.excel, className: "bg-green-600 hover:bg-green-700 border-green-700", label: "Excel", description: "Data and tables" },
  isAssessment && isEducatorOrAdmin && { format: ExportFormat.MoodleXML, icon: ICONS.moodle, className: "bg-amber-600 hover:bg-amber-700 border-amber-700", label: "Moodle XML", description: "For LMS import" }

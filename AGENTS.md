@@ -1,145 +1,55 @@
 # AGENTS.md
 
 ## Project Overview
-Exameno CBC Content Generator (ECG) is an AI-powered platform used to generate KICD-aligned CBC and CBE educational content for Grades 1–10.
+Exameno ECG is an education content and assessment platform for Kenyan CBC/CBE schools, teachers and learners.
 
-The system produces:
-- Schemes of Work (SOW)
-- Lesson Plans
-- Lesson Notes
-- Records of Work Covered (ROWC)
-- Midterm Exams
-- Endterm Exams
-- Holiday Assignments
-- Topical Assessments
-- Competency-Based Assessments (CBAs)
-- Revision Questions
-- Multiple Choice Questions
-- Structured Questions
-- Answer Keys and Marking Schemes
+The SOW Library is the authoritative source for teacher-uploaded Schemes of Work. ECG does **not** author or generate new Schemes of Work using AI.
 
-## Curriculum Standards
-Always align content with:
-- Kenya Institute of Curriculum Development (KICD)
-- Competency-Based Curriculum (CBC)
-- Competency-Based Education (CBE)
-- Latest curriculum designs and learning outcomes
+## SOW Library — Non-negotiable product rules
+- Teachers and authorised administrators upload already prepared Schemes of Work.
+- Preserve the uploaded source document unchanged and retain its provenance.
+- Treat the uploaded SOW as authoritative for its own Grade, Subject, Term, Academic Year, week and lesson numbering, strands, sub-strands, specific learning outcomes, learning experiences, inquiry questions, resources, assessment methods and remarks.
+- Organise records by Grade → Term → Subject → Academic Year. Support Play Group, PP1, PP2 and Grades 1–12, and Terms 1–3.
+- Support structured Excel (.xlsx) and CSV uploads as first-class formats. Also support Exameno-formatted PDF and DOCX uploads.
+- Never silently invent, rewrite, normalise away, or fill missing source lesson content. Report ambiguous or missing fields for review.
+- Do not reject an uploaded SOW merely because a corresponding KICD canonical curriculum record or canonical term allocation is absent or different.
+- Perform technical integrity checks: file readability, required structure, lesson identity, source lineage, duplicates, schedule gaps relative to the uploaded source, column integrity and export correctness.
+- Preserve explicitly detected historical academic years. Default only new records with no supplied year to 2027.
+- Keep original uploaded files downloadable unchanged. Provide PDF, editable DOCX and RFC-4180 UTF-8-BOM CSV exports.
+- Generated resources must retain sourceSowId, sourceSowEntryId, sourceDocumentRef and the selected lesson context.
+- SOW-driven resource generation must not require school timetable capacity or a school teaching schedule.
+- Do not make the KICD curriculum library a prerequisite for SOW upload or SOW-driven resource generation.
 
-**Never** invent strands, sub-strands, specific learning outcomes, or content standards.
+## SOW-derived content
+The Generator may create Lesson Plans, Lesson Notes, Learner Study Guides, Short Quizzes, Topic Exams, Comprehensive Term Exams, Assessments and Records of Work Covered (ROWC) from selected uploaded SOW lessons.
+AI must not create or regenerate the source SOW itself.
+Do not diagnose learners. Assessment evidence and results must remain traceable to their source resources and assignments.
 
-## Grade Coverage
-Support:
-- Grade 1–6 (Primary)
-- Grade 7–9 (Junior School)
-- Grade 10 (Senior School)
+## Curriculum standards
+For curriculum-dependent content, use the approved curriculum source available to the relevant workflow. Never invent strands, sub-strands, specific learning outcomes or content standards. Do not apply canonical curriculum validation as a gate to registering an uploaded SOW.
 
-## Question Generation Rules
+## Grade coverage
+Support Play Group, PP1, PP2 and Grades 1–12 where the relevant platform modules support them.
 
-### Multiple Choice Questions
-- Use four options only (A, B, C, D).
-- Provide exactly one correct answer.
-- Randomize answer positions.
-- Avoid answer-pattern repetition.
-- Questions should progress from easy to difficult.
-- Include knowledge, understanding, application, analysis, and evaluation skills.
-- Avoid ambiguous wording.
-- Avoid "All of the above" and "None of the above".
+## Question generation rules
+- Multiple-choice questions use four options (A, B, C, D) and exactly one correct answer.
+- Avoid ambiguous wording and answer-pattern repetition.
+- Structured questions include clear marks allocation and accurate marking schemes.
+- Verify answer keys against their questions.
 
-**Format:**
-Question text
-A) Option 1
-B) Option 2
-C) Option 3
-D) Option 4
-ANSWER: C
+## Technical rules
+- Preserve existing functionality outside the scoped change.
+- Prefer reusable components and modular TypeScript.
+- Preserve Firebase security boundaries and enforce authorisation server-side.
+- Validate uploads by file signature/content as well as extension and MIME type.
+- Never expose secrets, service-account credentials or private environment files in source control.
+- Add or update automated tests for every changed behaviour.
+- Do not claim tests, builds or deployments passed unless they were actually run and the results are available.
 
-### Structured Questions
-- Include marks allocation.
-- Ensure marking schemes are clear and accurate.
-- Questions should assess competencies and practical application.
-- Include higher-order thinking skills.
+## UI standards
+- Use Inter font, clean spacing, accessible contrast and responsive layouts.
+- Use consistent 1px borders for cards and containers.
+- Keep navigation and workflows clear and predictable.
 
-## Lesson Plans
-Always include:
-- Strand
-- Sub-strand
-- Specific Learning Outcomes
-- Key Inquiry Questions
-- Core Competencies
-- Values
-- Pertinent and Contemporary Issues (PCIs)
-- Learning Resources
-- Introduction
-- Lesson Development
-- Assessment
-- Reflection
-
-## Schemes of Work
-Always include:
-- Week
-- Lesson Number
-- Strand
-- Sub-strand
-- Specific Learning Outcomes
-- Learning Experiences
-- Resources
-- Assessment Methods
-- Remarks
-
-## Records of Work Covered (ROWC)
-Always include:
-- Week
-- Lesson
-- Content Covered
-- Activities
-- Remarks
-
-## Answer Keys
-- Verify correctness before output.
-- Ensure consistency with questions.
-- Maintain accurate numbering.
-- Use concise explanations where necessary.
-
-## Writing Style
-- Use clear professional English.
-- Use British spelling.
-- Be concise and educational.
-- Avoid unnecessary explanations.
-- Maintain consistency throughout outputs.
-
-## Formatting Standards
-- Use tables where appropriate.
-- Maintain clean spacing.
-- Ensure outputs are copy-paste friendly.
-- Generate markdown-compatible content.
-
-## Quality Requirements
-Always:
-- Verify factual accuracy.
-- Avoid duplicated questions.
-- Avoid contradictory statements.
-- Ensure age appropriateness.
-- Maintain curriculum alignment.
-- Prioritize educational value over quantity.
-
-## Technical Rules
-- Preserve existing functionality when modifying code.
-- Prefer reusable components.
-- Use TypeScript where possible.
-- Follow component-based architecture.
-- Keep files modular.
-- Avoid unnecessary dependencies.
-- Write maintainable code.
-- Ensure mobile responsiveness.
-
-## UI Standards
-- Use 1px borders for cards and containers.
-- Use Inter font across the application.
-- Maintain consistent spacing.
-- Prioritize mobile-first layouts.
-- Use accessible color contrast.
-- Keep interfaces simple and professional.
-
-## Output Priority
-Accuracy > Curriculum Alignment > Educational Value > Formatting > Speed
-**Never sacrifice accuracy for brevity**
+## Output priority
+Source fidelity and data integrity > security > correctness > usability > speed.

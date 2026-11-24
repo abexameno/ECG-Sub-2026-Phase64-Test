@@ -58,6 +58,15 @@ describe('Rendered Scheme of Work PDF integration', () => {
     expect(table.table.body[1][7].stack[0].text[0].text).toBe('Cooking equipment and foodstuff.');
     expect(table.table.body[1][8].text).toBe('3');
     expect(table.table.body[1][9].text).toBe('false');
+    const metadata = definition.content.find((item: any) =>
+      Array.isArray(item?.text) && item.text.some((part: any) => part?.text === 'Grade: ')
+    );
+    expect(metadata).toBeDefined();
+    const metadataText = metadata.text.map((part: any) => part?.text || '').join('');
+    expect(metadataText).toContain('Grade: Grade 7');
+    expect(metadataText).toContain('Subject: Agriculture and Nutrition');
+    expect(metadataText).toContain('Term: Term 2');
+    expect(definition.styles.sowTableHeader.fillColor).toBe('#54258A');
   });
 
   it('renders all supplied rows and rightmost-column content into a readable PDF', async () => {

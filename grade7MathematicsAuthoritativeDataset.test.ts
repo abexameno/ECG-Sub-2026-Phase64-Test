@@ -13,9 +13,14 @@ describe('KICD Grade 7 Mathematics source dataset', () => {
     expect(new Set(GRADE_7_MATHEMATICS_SUBSTRAND_ALLOCATIONS.map(item => item.subStrand)).size).toBe(18);
   });
 
-  it('does not imply a term allocation when the cited KICD summary only verifies full-grade lesson counts', () => {
+  it('records the user-confirmed school Term 1 sequence separately from KICD full-grade authority', () => {
     expect(GRADE_7_MATHEMATICS_SOURCE.authorityStatus).toBe('AUTHORITATIVE_FULL_GRADE_ALLOCATION_VERIFIED');
-    expect(GRADE_7_MATHEMATICS_SOURCE.termAllocationStatus).toBe('UNVERIFIED');
+    expect(GRADE_7_MATHEMATICS_SOURCE.termAllocationStatus).toBe('SCHOOL_APPROVED_SEQUENCE_VERIFIED');
+    expect(GRADE_7_MATHEMATICS_SOURCE.termAllocationAcademicYear).toBe(2026);
+    expect(GRADE_7_MATHEMATICS_SOURCE.termAllocationGrade).toBe(7);
+    expect(GRADE_7_MATHEMATICS_SOURCE.termAllocationTerm).toBe(1);
+    expect(GRADE_7_MATHEMATICS_SOURCE.termAllocationApproval).toBe('USER_CONFIRMED_SCHOOL_APPROVED');
+    expect(GRADE_7_MATHEMATICS_SOURCE.curriculumAlignmentStatus).toBe('PENDING_LINE_BY_LINE_KICD_VALIDATION');
     expect(GRADE_7_MATHEMATICS_SOURCE.sourceUrl).toContain('kicd.ac.ke');
   });
 });

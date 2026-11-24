@@ -49,7 +49,10 @@ const HEADER_ALIASES: Record<SowImportField, string[]> = {
   learningExperiences: ['learning experiences', 'suggested learning experiences', 'learning activities', 'activities'],
   learningResources: ['learning resources', 'resources', 'teaching learning resources', 'learning'],
   assessment: ['assessment', 'assessment methods', 'assessment method'],
-  remarks: ['remarks', 'reflection', 'comments'],
+  // The uploaded Grade 7 Mathematics source labels its final column "Ref l" (Reference).
+  // The Exameno ten-column master template has Remarks instead of a separate Reference column,
+  // so preserve the source reference values in Remarks and disclose the mapping to the reviewer.
+  remarks: ['remarks', 'reflection', 'comments', 'ref', 'ref l', 'reference', 'reference book and page'],
 };
 
 const normalize = (value: string) => value.toLowerCase().replace(/[\r\n]+/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -164,6 +167,11 @@ export function parseUploadedSowText(sourceText: string, teacher = ''): SowImpor
     warnings.push('A structured lesson table could not be identified. The source text has been retained for manual review; no lesson rows were invented.');
   } else {
     detectedColumns = header.fields.filter((field): field is SowImportField => Boolean(field));
+    const sourceHeaderCells = tableRows.slice(header.index, header.index + header.consumedRows).flatMap(row => row.cells);
+    const hasReferenceColumn = sourceHeaderCells.some(cell => ['ref', 'ref l', 'reference', 'reference book and page'].includes(normalize(cell)));
+    if (hasReferenceColumn) {
+      warnings.push('The source Reference/Ref column was preserved in the Exameno Remarks field because the ten-column export template has no separate Reference column.');
+    }
     const rows = tableRows.slice(header.index + header.consumedRows);
     const fieldToEntryKey: Partial<Record<SowImportField, keyof SchemeOfWorkEntry>> = {
       strand: 'strand', subStrand: 'subStrand', learningOutcomes: 'learningOutcomes',

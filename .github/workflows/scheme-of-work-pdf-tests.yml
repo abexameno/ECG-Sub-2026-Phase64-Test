@@ -23,7 +23,7 @@ on:
       - ".github/workflows/scheme-of-work-pdf-tests.yml"
   push:
     branches:
-      - fix/pdf-sow-column-overflow
+      - fix/phase64-sow-regression-port
   workflow_dispatch:
 
 permissions:
