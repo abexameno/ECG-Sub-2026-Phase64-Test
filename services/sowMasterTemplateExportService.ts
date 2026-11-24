@@ -74,7 +74,7 @@ function setCellText(cell: string, value: string): string {
     return cell.replace(/<w:t(\s[^>]*)?>[\s\S]*?<\/w:t>/g, (_match, attrs = '') => {
       if (replaced) return '';
       replaced = true;
-      const safeAttrs = String(attrs).replace(/\\s+xml:space=(["']).*?\\1/g, '');
+      const safeAttrs = String(attrs).replace(/\s+xml:space=(["']).*?\\1/g, '');
       return `<w:t${safeAttrs} xml:space="preserve">${escaped}</w:t>`;
     });
   }
@@ -134,20 +134,22 @@ export function populateSowTemplateDocumentXml(documentXml: string, payload: Sow
   const rebuiltTable = lessonTable.replace(/(<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>)[\s\S]*?(?=<\/w:tbl>)/, headerRow + populatedRows.join(''));
   xml = xml.replace(lessonTable, rebuiltTable);
 
-  // Completed exports omit all reusable QA/instruction pages from the blank master.
+  // Completed exports omit the reusable QA/instruction pages from the blank master.
+  // Locate the paragraph containing the QA heading and remove only that paragraph
+  // onward. If the immediately preceding paragraph is the template's page break,
+  // remove that too. This avoids deleting the actual SOW when a fixture or template
+  // version does not contain a page-break paragraph.
   const qaMarker = 'MASTER TEMPLATE — COMPLETION AND QUALITY STANDARD';
-  const qaIndex = xml.indexOf(qaMarker);
-  if (qaIndex >= 0) {
-    const sectionStart = xml.indexOf('<w:sectPr', qaIndex);
+  const paragraphs = [...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)];
+  const qaParagraphIndex = paragraphs.findIndex(match => match[0].includes(qaMarker));
+  if (qaParagraphIndex >= 0) {
+    let cutStart = paragraphs[qaParagraphIndex].index!;
+    const previousParagraph = paragraphs[qaParagraphIndex - 1];
+    if (previousParagraph && /<w:br\b[^>]*w:type=["']page["']/.test(previousParagraph[0])) {
+      cutStart = previousParagraph.index!;
+    }
+    const sectionStart = xml.indexOf('<w:sectPr', cutStart);
     if (sectionStart < 0) throw new Error('SOW_TEMPLATE_QA_SECTION_BOUNDARY_INVALID');
-    // The master template deliberately starts its QA-only page with a page-break
-    // paragraph. Cut from that exact paragraph so the completed SOW retains page 1.
-    const precedingMarkup = xml.slice(0, qaIndex);
-    const pageBreakMatches = [...precedingMarkup.matchAll(/<w:p(?:\s[^>]*)?>(?:(?!<\/w:p>)[\s\S])*?<w:br[^>]*w:type=["']page["'][^>]*>(?:(?!<\/w:p>)[\s\S])*?<\/w:p>/g)];
-    const pageBreak = pageBreakMatches[pageBreakMatches.length - 1];
-    const qaParagraphStart = Math.max(xml.lastIndexOf('<w:p>', qaIndex), xml.lastIndexOf('<w:p ', qaIndex));
-    const cutStart = pageBreak ? pageBreak.index! : qaParagraphStart;
-    if (cutStart < 0 || cutStart >= sectionStart) throw new Error('SOW_TEMPLATE_QA_SECTION_BOUNDARY_INVALID');
     xml = xml.slice(0, cutStart) + xml.slice(sectionStart);
   }
   // The continuation note is an instruction for the blank master, not SOW content.
