@@ -1,0 +1,32 @@
+{
+  "name": "Exameno CBC Content Generator (ECG)",
+  "short_name": "Exameno ECG",
+  "start_url": "/",
+  "id": "exameno-ecg-2026",
+  "display": "standalone",
+  "background_color": "#E8F7F0",
+  "theme_color": "#E8F7F0",
+  "description": "AI-powered tool for Kenyan teachers to generate curriculum-aligned educational content.",
+  "categories": ["education", "productivity"],
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    }
+  ]
+}

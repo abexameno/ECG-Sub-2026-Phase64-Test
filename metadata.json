@@ -1,0 +1,8 @@
+{
+  "name": "Exameno ECG Assistant",
+  "description": "An AI-powered tool for Kenyan teachers to generate curriculum-aligned educational content and create SOW, Lesson Plans, Lesson Notes, Study Guides, Quizzes, Term and Topic Exams, Comprehensive Assessments for grades 1-12, with export to PDF, Word, and Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

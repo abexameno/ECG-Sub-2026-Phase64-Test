@@ -1,0 +1,29 @@
+name: CI Runner Diagnostics
+
+on:
+  push:
+    branches:
+      - fix/pdf-sow-column-overflow
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runner-smoke-test:
+    name: Runner Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Print runner identity
+        run: |
+          echo "GitHub Actions runner started successfully."
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "SHA: ${{ github.sha }}"
+          uname -a
+          date -u
+      - name: Check Node and npm availability
+        run: |
+          node --version
+          npm --version

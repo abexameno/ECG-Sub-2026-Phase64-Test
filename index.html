@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSI+PHBhdGggZD0iTTU0IDYwSDEwYTYgNiAwIDAgMS02LTZWMTBhNiA2IDAgMCAxIDYtNmg0NGE2IDYgMCAwIDEgNiA2djQ0YTYgNiAwIDAgMS02IDZ6IiBmaWxsPSIjMDY0ZTNCIi8+PHRleHQgeD0iMTIiIHk9IjI0IiBmb250LWZhbWlseT0iSW50ZXIsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZGh0PSJib2xkIiBmaWxsPSIjZmZmZmZmIj5FWDx0c3BhbiBmaWxsPSIjMTBiOTgxIj5BPC90c3Bhbj5NPC90ZXh0PjxyZWN0IHg9IjEyIiB5PSIzMiIgd2lkdGg9IjQwIiBoZWlnaHQ9IjMiIHJ4PSIxLjUiIGZpbGw9IiNmZmZmZmYiLz48cmVjdCB4PSIxMiIgeT0iMzkiIHdpZHRoPSI0MCIgaGVpZGh0PSIzIiByeD0iMS41IiBmaWxsPSIjZmZmZmZmIiIvPjxyZWN0IHg9IjEyIiB5PSI0NiIgd2lkdGg9IjQwIiBoZWlnaHQ9IjMiIHJ4PSIxLjUiIGZpbGw9IiNmZmZmZmYiLz48cmVjdCB4PSIxMiIgeT0iMTAiIHdpZHRoPSIzMCIgaGVpZGh0PSIzIiByeD0iMS41IiBmaWxsPSIjZmZmZmZmIiIvPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI2IDQpIHJvdGF0ZSgyNSkiPjxwYXRoIGQ9Ik0zNSAxNSBMMzUgNTUgTDI1IDU1IEwyNSAxNSBaIiBmaWxsPSIjMDQ3ODU3IiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiAvPjxwYXRoIGQ9Ik0yNSA1NSBMMzAgNjMgTDM1IDU1IFoiIGZpbGw9IiMwNjVmNDYiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIyLjUiHN0cm9rZS1saW5lam9pbj0icm91bmQiIC8+PHBhdGggZD0iTTI3LjUgNTcgTDMwIDYxIEwzMi41IDU3IFoiIGZpbGw9IiM2ZWU3YjciLz48cmVjdCB4PSIyNyIgeT0iMTAiIHdpZHRoPSI2IiBoZWlnaHQ9IjUiIHJ4PSIzIiBmaWxsPSIjMDY1ZjQ2IiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMi41IiAvPjwvZz48L3N2Zz4=" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#E8F7F0" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Exameno ECG Assistant</title>
+    <meta name="description" content="An AI-powered tool for Kenyan teachers to generate curriculum-aligned educational content and create SOW, Lesson Plans, Lesson Notes, Study Guides, Quizzes, Term and Topic Exams, Comprehensive Assessments for grades 1-12, with export to PDF, Word, and Excel." />
+    <meta property="og:title" content="Exameno ECG Assistant" />
+    <meta property="og:description" content="An AI-powered tool for Kenyan teachers to generate curriculum-aligned educational content and create SOW, Lesson Plans, Lesson Notes, Study Guides, Quizzes, Term and Topic Exams, Comprehensive Assessments for grades 1-12, with export to PDF, Word, and Excel." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.9/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.9/vfs_fonts.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/docx@7.1.0/build/index.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.12.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

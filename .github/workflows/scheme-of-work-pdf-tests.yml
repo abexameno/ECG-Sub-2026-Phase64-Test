@@ -1,0 +1,122 @@
+
+name: Scheme of Work PDF Regression Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "services/pdfService.ts"
+      - "services/sowCoverageValidation.ts"
+      - "data/curriculum/**"
+      - "browser-tests/**"
+      - "playwright.config.ts"
+      - "sowPdfRendered.integration.test.ts"
+      - "sowCoverageValidation.test.ts"
+      - "components/ContentDisplay.tsx"
+      - "types.ts"
+      - "types/**"
+      - "*.test.ts"
+      - "*.test.tsx"
+      - "jest.config.*"
+      - "package.json"
+      - ".github/workflows/scheme-of-work-pdf-tests.yml"
+  push:
+    branches:
+      - fix/pdf-sow-column-overflow
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression-checks:
+    name: Test, Type Check, and Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --no-package-lock
+
+      - name: Report toolchain versions
+        run: |
+          node --version
+          npm --version
+          npm ls --depth=0 || true
+
+      - name: Run Jest tests
+        env:
+          SOW_PDF_ARTIFACT_PATH: artifacts/sow-pdf-regression.pdf
+        run: npm test -- --runInBand --detectOpenHandles
+
+      - name: Narrow Firestore lifecycle warning to a test quarter
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          mapfile -t test_files < <(find . -maxdepth 1 -type f -name '*.test.ts' -print | sort)
+          total=${#test_files[@]}
+          chunk=$(((total + 3) / 4))
+          echo "Total test files: $total; chunk size: $chunk"
+          for index in 0 1 2 3; do
+            start=$((index * chunk))
+            if [ "$start" -ge "$total" ]; then
+              break
+            fi
+            if [ "$index" -eq 3 ]; then
+              # Quarter 4 previously reproduced the late Firestore listener warning.
+              # Split it into two smaller groups to narrow the owning test.
+              half=$(((chunk + 1) / 2))
+              for subindex in 0 1; do
+                substart=$((start + subindex * half))
+                if [ "$substart" -ge "$total" ]; then
+                  break
+                fi
+                echo "::group::Jest quarter 4, subgroup $((subindex + 1))"
+                npm test -- --runInBand --detectOpenHandles "${test_files[@]:substart:half}"
+                result=$?
+                echo "QUARTER_4_SUBGROUP_$((subindex + 1))_EXIT_CODE=$result"
+                echo "::endgroup::"
+              done
+            else
+              echo "::group::Jest quarter $((index + 1))"
+              npm test -- --runInBand --detectOpenHandles "${test_files[@]:start:chunk}"
+              result=$?
+              echo "QUARTER_$((index + 1))_EXIT_CODE=$result"
+              echo "::endgroup::"
+            fi
+          done
+
+      - name: Check TypeScript
+        if: always()
+        run: npm run lint
+
+      - name: Build production application
+        if: always()
+        run: npm run build
+
+      - name: Install Chromium for browser regression tests
+        if: success()
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser preview regression tests
+        if: success()
+        run: npm run test:browser
+
+      - name: Upload rendered SOW PDF for visual inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sow-pdf-visual-inspection
+          path: artifacts/sow-pdf-regression.pdf
+          if-no-files-found: ignore
+          retention-days: 7

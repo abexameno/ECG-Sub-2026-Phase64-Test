@@ -1,0 +1,1744 @@
+
+
+
+import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
+import Header from './components/Header';
+import { GeneratorForm } from './components/GeneratorForm';
+import { ContentDisplay } from './components/ContentDisplay';
+import { SettingsPanel } from './components/SettingsPanel';
+import { FormState, GeneratedContent, ContentType, QuestionDifficulty, ExportHeaderInfo, AssessmentExportType, GeneratedQuestion, QuestionType, User, CreditLog, SystemSettings, AppNotification, AISuggestionType, SchemeOfWorkData, SchemeOfWorkEntry, ROWCLessonEntry } from './types';
+import { generateContent, generateSingleImageForQuestion, applyAISuggestion } from './services/geminiService';
+import TeacherDashboard from './components/TeacherDashboard';
+import AdminPanel from './components/AdminPanel';
+import HelpGuide from './components/HelpGuide';
+import FeedbackPanel from './components/FeedbackPanel';
+import SubscriptionPanel from './components/SubscriptionPanel.tsx';
+import ReferralHub from './components/ReferralHub.tsx';
+import IllustrationEditor from './components/IllustrationEditor.tsx';
+import StudentElmsPanel from './components/StudentElmsPanel';
+import { TeacherTeachingView } from './components/TeacherTeachingView';
+import { SchoolMembershipService } from './services/schoolMembershipService';
+import { AcademicOperationsService } from './services/academicOperationsService';
+import { NotificationService } from './services/notificationService';
+import { SchoolSwitchModal } from './components/SchoolSwitchModal';
+import { stripImageData } from './utils/storageUtils';
+import { auth, db } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { 
+ doc, 
+ onSnapshot, 
+ setDoc, 
+ updateDoc, 
+ deleteDoc, 
+ collection, 
+ query, 
+ orderBy, 
+ serverTimestamp,
+ getDoc,
+ getDocs,
+ arrayUnion,
+ increment,
+ writeBatch,
+ where,
+ addDoc
+} from 'firebase/firestore';
+import { handleFirestoreError, OperationType, cleanForFirestore, isQuotaError } from './firebaseUtils';
+import LoginScreen from './components/LoginScreen';
+import ErrorBoundary from './components/ErrorBoundary';
+import LoadingSpinner from './components/LoadingSpinner';
+import { initializeCurriculumOverrides } from './services/curriculumOverrideService';
+import { TeacherActionService } from './services/teacherActionService';
+import { TeacherActionPlan } from './types/teacherAction';
+import { usePWA } from './hooks/usePWA';
+import { purgeOldLibraryItems } from './services/cleanupService';
+import { Tablet, X, Sparkles, Calendar, BookOpen, GraduationCap, MoreHorizontal, ChevronDown, User as UserIcon, CreditCard, Shield, MessageSquare, HelpCircle, LogOut, Plus, School } from 'lucide-react';
+import { getAccessToken, backupItemToDrive } from './services/googleDriveService';
+import { TeachingContextService } from './services/teachingContextService';
+import ProfileOnboardingModal from './components/ProfileOnboardingModal';
+import { OnboardingModal } from './components/OnboardingModal';
+import { WelcomeGuide } from './components/WelcomeGuide';
+import { AuthoritativeAccountService } from './services/authoritativeAccountService';
+import { PersistentStateService } from './services/persistentStateService';
+import { isProfileComplete } from './utils/profileUtils';
+import { GeneratorHero } from './components/GeneratorHero';
+
+const APP_VERSION = '1.0.5';
+
+const initialFormState: FormState = {
+ grade: 'Grade 3',
+ subject: 'CRE',
+ topic: '',
+ contentType: ContentType.SchemeOfWork,
+ difficulty: QuestionDifficulty.Mixed,
+ topicInputMode: 'curriculum',
+ multiSelectTopics: {},
+ terms: [],
+ distributionMode: 'manual',
+ totalQuestions: 25,
+ questionCounts: {
+ [QuestionType.MultipleChoice]: 20,
+ [QuestionType.ShortAnswer]: 5,
+ [QuestionType.TrueFalse]: 0,
+ [QuestionType.Essay]: 0,
+ [QuestionType.Discussion]: 0
+ },
+ questionMarks: {
+ [QuestionType.MultipleChoice]: 1,
+ [QuestionType.TrueFalse]: 1,
+ [QuestionType.ShortAnswer]: 2,
+ [QuestionType.Essay]: 0,
+ [QuestionType.Discussion]: 0
+ },
+ additionalInstructions: '',
+ generateImages: false,
+ imageSize: '1K',
+ textbookReference: '',
+ strictCurriculumAdherence: true,
+ showMarksAdjustment: true,
+};
+
+const App: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'my-teaching' | 'home' | 'library' | 'student-elms' | 'illustrations' | 'subscription' | 'help' | 'feedback' | 'admin' | 'settings' | 'referrals'>('home');
+ const [submittingPolls, setSubmittingPolls] = useState<{[key: string]: string | null}>({});
+ const [illustrationPreload, setIllustrationPreload] = useState<{
+ prompt: string;
+ subject: string;
+ topic: string;
+ grade: string;
+ } | null>(null);
+
+ const handleOpenIllustrationStudio = (prompt: string, subject: string, topic: string, grade: string) => {
+ setIllustrationPreload({ prompt, subject, topic, grade });
+ setActiveTab('illustrations');
+ };
+
+ const handleGenerateResourceFromSOW = (
+   resourceType: ContentType.LessonPlan | ContentType.LessonNotes,
+   sowData: SchemeOfWorkData,
+   entry: SchemeOfWorkEntry,
+   parentArtifactId?: string
+ ) => {
+   const grade = sowData.grade;
+   const subject = sowData.subject;
+   const term = sowData.term;
+   const week = entry.week;
+   const lessonNumber = entry.lesson;
+   const strand = entry.strand;
+   const subStrand = entry.subStrand;
+   const learningOutcomes = entry.learningOutcomes;
+
+   const curriculumLessonId = `canonical-${(grade || '').toLowerCase().replace(/\s+/g, '')}-${(subject || '').toLowerCase().replace(/\s+/g, '')}-w${week}-l${lessonNumber}`;
+   const scheduledLessonId = `sched-w${week}-p${lessonNumber}`;
+   const topicTitle = `${strand} - ${subStrand}`;
+
+   setFormState(prev => ({
+     ...prev,
+     contentType: resourceType,
+     grade: grade || prev.grade,
+     subject: subject || prev.subject,
+     terms: term ? [term] : prev.terms,
+     term: (term as any) || prev.term,
+     week: week,
+     lessonNumber: lessonNumber,
+     topic: topicTitle,
+     topicInputMode: 'curriculum',
+     multiSelectTopics: strand && subStrand ? { [strand]: [subStrand] } : prev.multiSelectTopics,
+     selectedWeeks: week ? [week] : prev.selectedWeeks,
+     selectedLessons: week && lessonNumber ? [{ week, lesson: lessonNumber }] : prev.selectedLessons,
+     additionalInstructions: `Lesson context: ${strand} > ${subStrand}. Specific Learning Outcomes: ${learningOutcomes}`,
+     parentArtifactId: parentArtifactId || content?.id,
+     masterSowId: parentArtifactId || content?.id,
+     curriculumLessonId: curriculumLessonId,
+     scheduledLessonId: scheduledLessonId,
+     sowLessonContext: {
+       sowTitle: content?.title || `${grade} ${subject} SOW`,
+       week: week,
+       lesson: lessonNumber,
+       strand: strand,
+       subStrand: subStrand,
+       learningOutcomes: learningOutcomes,
+       inquiryQuestions: entry.inquiryQuestions,
+       learningExperiences: entry.learningExperiences,
+       learningResources: entry.learningResources,
+     }
+   }));
+
+   setActiveTab('home');
+ };
+
+ const handleMarkLessonTaughtFromSOW = async (
+   sowData: SchemeOfWorkData,
+   entry: SchemeOfWorkEntry,
+   actualTeachingDate: string,
+   parentArtifactId?: string
+ ) => {
+   if (!currentUser || !content) return;
+
+   const masterSowId = parentArtifactId || content.id;
+   const grade = sowData.grade;
+   const subject = sowData.subject;
+   const term = sowData.term;
+   const week = entry.week;
+   const lessonNumber = entry.lesson;
+   const strand = entry.strand;
+   const subStrand = entry.subStrand;
+
+   const curriculumLessonId = `canonical-${(grade || '').toLowerCase().replace(/\s+/g, '')}-${(subject || '').toLowerCase().replace(/\s+/g, '')}-w${week}-l${lessonNumber}`;
+   const scheduledLessonId = `sched-w${week}-p${lessonNumber}`;
+
+   // 1. Update current content.schemeOfWorkData.entries if matching this SOW
+   if (content.schemeOfWorkData && (content.id === masterSowId || content.metadata?.parentArtifactId === masterSowId)) {
+     const updatedEntries = content.schemeOfWorkData.entries.map(e => {
+       if (e.week === week && e.lesson === lessonNumber) {
+         return {
+           ...e,
+           isTaught: true,
+           actualTeachingDate: actualTeachingDate,
+           taughtStatus: 'COMPLETED' as const
+         };
+       }
+       return e;
+     });
+
+     const updatedContent = {
+       ...content,
+       schemeOfWorkData: {
+         ...content.schemeOfWorkData,
+         entries: updatedEntries
+       }
+     };
+
+     setContent(updatedContent);
+     setLibrary(prev => prev.map(item => item.id === content.id ? updatedContent : item));
+
+     try {
+       const userDocRef = doc(db, 'users', currentUser.id, 'library', content.id || 'temp-id');
+       await setDoc(userDocRef, cleanForFirestore(stripImageData(updatedContent)), { merge: true });
+     } catch (e: any) {
+       console.warn("Firestore save fallback for SOW mark taught:", e.message);
+     }
+   }
+
+   // 2. Ensure ROWC record or ROWC completion entry is recorded with composite key
+   const rowcEntry: ROWCLessonEntry = {
+     id: `rowc-entry-${masterSowId}-${week}-${lessonNumber}`,
+     date: actualTeachingDate,
+     grade,
+     subject,
+     term,
+     strand,
+     subStrand,
+     lessonTitle: `Lesson ${lessonNumber}: ${subStrand}`,
+     learningActivities: entry.learningExperiences || 'Classroom delivery completed.',
+     resources: entry.learningResources || 'Standard curriculum resources.',
+     assessment: entry.assessment || 'Formative assessment.',
+     remarks: 'Marked as taught on schedule.'
+   };
+
+   // Check if ROWC artifact already exists for this SOW using composite key lookup
+   const existingRowc = library.find(item => 
+     item.metadata?.contentType === ContentType.RecordOfWorkCovered &&
+     (item.metadata?.parentArtifactId === masterSowId || item.metadata?.masterSowId === masterSowId)
+   );
+
+   if (existingRowc && existingRowc.rowcData) {
+     const existingLessons = existingRowc.rowcData.lessons || [];
+     const exists = existingLessons.some(l => l.id === rowcEntry.id || (l.strand === strand && l.subStrand === subStrand && l.date === actualTeachingDate));
+     if (!exists) {
+       const updatedRowc = {
+         ...existingRowc,
+         rowcData: {
+           ...existingRowc.rowcData,
+           lessons: [rowcEntry, ...existingLessons]
+         }
+       };
+       setLibrary(prev => prev.map(item => item.id === existingRowc.id ? updatedRowc : item));
+       try {
+         const userDocRef = doc(db, 'users', currentUser.id, 'library', existingRowc.id || 'temp-id');
+         await setDoc(userDocRef, cleanForFirestore(stripImageData(updatedRowc)), { merge: true });
+       } catch (e) {}
+     }
+   } else {
+     const newRowcContent: GeneratedContent = {
+       id: `gen_rowc_${Date.now()}`,
+       ownerId: currentUser.id,
+       title: `Record of Work Covered: ${grade} ${subject} (${term})`,
+       rowcData: {
+         weekRange: `Week ${week}`,
+         lessons: [rowcEntry],
+         reflection: 'All scheduled lessons delivered successfully.'
+       },
+       metadata: {
+         schoolId: currentUser.schoolName || 'ECG',
+         grade,
+         subject,
+         topic: `${strand} - ${subStrand}`,
+         contentType: ContentType.RecordOfWorkCovered,
+         term,
+         parentArtifactId: masterSowId,
+         masterSowId: masterSowId,
+         curriculumLessonId,
+         scheduledLessonId,
+         week,
+         lessonNumber,
+         strand,
+         subStrand,
+         specificLearningOutcome: entry.learningOutcomes
+       },
+       savedAt: new Date().toISOString()
+     };
+
+     setLibrary(prev => [newRowcContent, ...prev]);
+     try {
+       const userDocRef = doc(db, 'users', currentUser.id, 'library', newRowcContent.id || 'temp-id');
+       await setDoc(userDocRef, cleanForFirestore(stripImageData(newRowcContent)));
+     } catch (e) {}
+   }
+ };
+
+ const handleGenerateAssessmentFromSOW = (
+   sowData: SchemeOfWorkData,
+   entry: SchemeOfWorkEntry,
+   parentArtifactId?: string
+ ) => {
+   const masterSowId = parentArtifactId || content?.id;
+   const grade = sowData.grade;
+   const subject = sowData.subject;
+   const term = sowData.term;
+   const week = entry.week;
+   const lessonNumber = entry.lesson;
+   const strand = entry.strand;
+   const subStrand = entry.subStrand;
+   const learningOutcomes = entry.learningOutcomes;
+
+   const curriculumLessonId = `canonical-${(grade || '').toLowerCase().replace(/\s+/g, '')}-${(subject || '').toLowerCase().replace(/\s+/g, '')}-w${week}-l${lessonNumber}`;
+   const scheduledLessonId = `sched-w${week}-p${lessonNumber}`;
+   const topicTitle = `${strand} - ${subStrand}`;
+
+   setFormState(prev => ({
+     ...prev,
+     contentType: ContentType.Assessment,
+     grade: grade || prev.grade,
+     subject: subject || prev.subject,
+     terms: term ? [term] : prev.terms,
+     term: (term as any) || prev.term,
+     week: week,
+     lessonNumber: lessonNumber,
+     topic: topicTitle,
+     topicInputMode: 'curriculum',
+     multiSelectTopics: strand && subStrand ? { [strand]: [subStrand] } : prev.multiSelectTopics,
+     selectedWeeks: week ? [week] : prev.selectedWeeks,
+     selectedLessons: week && lessonNumber ? [{ week, lesson: lessonNumber }] : prev.selectedLessons,
+     additionalInstructions: `Assessment scope bound strictly to: ${strand} > ${subStrand}. Specific Learning Outcomes: ${learningOutcomes}`,
+     parentArtifactId: masterSowId,
+     masterSowId: masterSowId,
+     curriculumLessonId: curriculumLessonId,
+     scheduledLessonId: scheduledLessonId,
+     sowLessonContext: {
+       sowTitle: content?.title || `${grade} ${subject} SOW`,
+       week: week,
+       lesson: lessonNumber,
+       strand: strand,
+       subStrand: subStrand,
+       learningOutcomes: learningOutcomes,
+       inquiryQuestions: entry.inquiryQuestions,
+       learningExperiences: entry.learningExperiences,
+       learningResources: entry.learningResources,
+     }
+   }));
+
+   setActiveTab('home');
+ };
+
+ const [isSaved, setIsSaved] = useState(false);
+ const [content, setContent] = useState<GeneratedContent | null>(null);
+ const [isLoading, setIsLoading] = useState(false);
+ const [generationProgress, setGenerationProgress] = useState(0);
+ const [error, setError] = useState<string | null>(null);
+ const [isAuthReady, setIsAuthReady] = useState(false);
+ const [isMoreOpen, setIsMoreOpen] = useState(false);
+ const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
+ const moreMenuRef = useRef<HTMLDivElement>(null);
+ const moreButtonRef = useRef<HTMLButtonElement>(null);
+
+ // Click-outside event listener for Top More Dropdown Menu
+ useEffect(() => {
+   const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+     if (!isMoreOpen) return;
+     const target = event.target as Node;
+     if (
+       moreMenuRef.current &&
+       !moreMenuRef.current.contains(target) &&
+       moreButtonRef.current &&
+       !moreButtonRef.current.contains(target)
+     ) {
+       setIsMoreOpen(false);
+     }
+   };
+
+   document.addEventListener('mousedown', handleClickOutside);
+   document.addEventListener('touchstart', handleClickOutside);
+   return () => {
+     document.removeEventListener('mousedown', handleClickOutside);
+     document.removeEventListener('touchstart', handleClickOutside);
+   };
+ }, [isMoreOpen]);
+
+ // Auto-close open menus whenever navigation tab changes
+ useEffect(() => {
+   setIsMoreOpen(false);
+   setIsMobileMoreOpen(false);
+ }, [activeTab]);
+ const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+ const [notifications, setNotifications] = useState<AppNotification[]>([]);
+ const [firebaseUser, setFirebaseUser] = useState<any>(null);
+ const [isQuotaOffline, setIsQuotaOffline] = useState(false);
+
+ const [formState, setFormState] = useState<FormState>(() => {
+ try {
+ const savedState = localStorage.getItem('examenoFormState');
+ if (!savedState) return { ...initialFormState, showMarksAdjustment: true };
+ const parsed = JSON.parse(savedState);
+ // Migration: Ensure showMarksAdjustment is true if not explicitly set
+ const merged = { ...initialFormState, ...parsed };
+ if (merged.showMarksAdjustment === undefined) {
+ merged.showMarksAdjustment = true;
+ }
+ return merged;
+ } catch (e) { 
+ return { ...initialFormState, showMarksAdjustment: true }; 
+ }
+ });
+
+ const [currentUser, setCurrentUser] = useState<User | null>(null);
+ const [showWelcomeGuide, setShowWelcomeGuide] = useState(false);
+  const [showGlobalOnboarding, setShowGlobalOnboarding] = useState(false);
+
+ useEffect(() => {
+  if (activeTab === 'home' && currentUser && !currentUser.hasSeenWelcomeGuide) {
+   const alreadyShownSession = sessionStorage.getItem('welcomeGuideShownThisSession');
+   if (!alreadyShownSession) {
+    setShowWelcomeGuide(true);
+    sessionStorage.setItem('welcomeGuideShownThisSession', 'true');
+   }
+  }
+ }, [activeTab, currentUser]);
+
+ // Improvement #4: Generator Context Pre-fill
+ useEffect(() => {
+  if (activeTab === 'home' && currentUser) {
+   const overview = TeachingContextService.getTeacherOverview(currentUser.id);
+   const context = overview.activeTeachingContext;
+    if (context) {
+     setFormState(prev => ({
+      ...prev,
+      grade: context.gradeId || prev.grade,
+      subject: context.learningAreaId || prev.subject,
+      terms: prev.terms.length === 0 ? (context.termId ? [context.termId] : []) : prev.terms
+     }));
+    } else if (formState.terms.length === 0) {
+     const activeSchoolId = SchoolMembershipService.getActiveSchoolMembership(currentUser.id)?.school.id;
+     const activeTerm = activeSchoolId ? AcademicOperationsService.getActiveTerm(activeSchoolId) : null;
+     if (activeTerm) {
+      setFormState(prev => ({ ...prev, terms: [activeTerm.name] }));
+     }
+    }
+  }
+ }, [activeTab, currentUser]);
+
+ useEffect(() => {
+ if (currentUser) {
+ purgeOldLibraryItems(currentUser.id, 30).then(count => {
+ if (count > 0) console.log(`Purged ${count} old items.`);
+ });
+ }
+ }, [currentUser]);
+ const [library, setLibrary] = useState<GeneratedContent[]>([]);
+ const [allUsers, setAllUsers] = useState<User[]>([]);
+ const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
+ try {
+ const saved = localStorage.getItem('exameno_sys_settings');
+ if (saved) return JSON.parse(saved);
+ } catch (e) {}
+ return {
+ welcomeCredits: 5,
+ welcomeCreditsEnabled: true,
+ creditCostSow: 2,
+ creditCostCba: 2,
+ creditCostLesson: 1,
+ creditCostQuiz: 1,
+ maintenanceMode: false,
+ notificationMessage: ''
+ };
+ });
+
+ // Admin users listener with 5-minute quota cache
+ useEffect(() => {
+ if (!currentUser) return;
+ if (currentUser.role === 'Admin') {
+ const fetchUsers = async () => {
+ try {
+ const cacheKey = 'all_users_cache';
+ const timeKey = 'all_users_last_fetched';
+ const cached = localStorage.getItem(cacheKey);
+ const lastFetched = localStorage.getItem(timeKey);
+ const now = Date.now();
+
+ if (cached && lastFetched && (now - parseInt(lastFetched) < 5 * 60 * 1000)) {
+ setAllUsers(JSON.parse(cached));
+ return;
+ }
+
+ const usersRef = collection(db, 'users');
+ const q = query(usersRef);
+ const snapshot = await getDocs(q);
+ const items = snapshot.docs.map(d => {
+ const data = d.data() as any;
+ let createdAt = data.createdAt;
+ if (createdAt && typeof createdAt !== 'string') {
+ try {
+ createdAt = createdAt.toDate ? createdAt.toDate().toISOString() : new Date(createdAt.seconds * 1000).toISOString();
+ } catch (e) {
+ createdAt = new Date().toISOString();
+ }
+ }
+ return {
+ ...data,
+ id: d.id,
+ createdAt: createdAt || new Date('2026-01-01').toISOString()
+ } as User;
+ });
+ setAllUsers(items);
+ localStorage.setItem(cacheKey, JSON.stringify(items));
+ localStorage.setItem(timeKey, now.toString());
+ } catch (err: any) {
+ console.log("Firestore Error in users fetch:", err);
+ handleFirestoreError(err, OperationType.LIST, 'users');
+ }
+ };
+ fetchUsers();
+ } else {
+ setAllUsers([]);
+ }
+ }, [currentUser?.role, currentUser?.id]);
+
+ useEffect(() => {
+ const unsubscribeOverrides = initializeCurriculumOverrides();
+ 
+ // Fetch system settings once async to minimize quota costs and avoid persistent websocket openSnapshots
+ const fetchSettings = async () => {
+ try {
+ const settingsRef = doc(db, 'settings', 'global');
+ const snapshot = await getDoc(settingsRef);
+ if (snapshot.exists()) {
+ const settingsData = snapshot.data() as SystemSettings;
+ setSystemSettings(prev => {
+ const updated = { ...prev, ...settingsData };
+ try {
+ localStorage.setItem('exameno_sys_settings', JSON.stringify(updated));
+ } catch (e) {}
+ return updated;
+ });
+ }
+ } catch (err: any) {
+ console.warn("Settings fetch failed (likely due to quota limit or public rules), using offline cache:", err.message);
+ if (isQuotaError(err)) {
+ setIsQuotaOffline(true);
+ }
+ }
+ };
+ fetchSettings();
+ 
+ const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+ setFirebaseUser(user);
+ if (user) {
+ const userDocRef = doc(db, 'users', user.uid);
+
+ try {
+ const snapshot = await getDoc(userDocRef);
+ if (snapshot.exists()) {
+ const userData = { ...snapshot.data(), id: snapshot.id } as User;
+ setCurrentUser(userData);
+
+ // Hydrate durable multi-tenant state from Firestore for authenticated user
+ PersistentStateService.hydrateSchools()
+   .then(() => PersistentStateService.hydrateMembershipsForUser(user.uid))
+   .then(() => {
+     const activeSchoolId =
+       SchoolMembershipService.getActiveSchoolMembership(user.uid)?.school?.id ||
+       (userData as any).activeSchoolId;
+     if (activeSchoolId) {
+       return PersistentStateService.hydrateSchoolTenantState(activeSchoolId);
+     }
+   })
+   .catch((err) => console.debug('Background tenant state hydration warning:', err));
+
+ if (userData.autoClean) {
+ try {
+ const purged = await purgeOldLibraryItems(userData.id);
+ console.log(`Auto-purge completed: ${purged} items removed.`);
+ } catch (e) {
+ console.warn("Auto-purge failed", e);
+ }
+ }
+ } else {
+ // Initialize authoritative user document on the server via POST /api/user/complete-profile
+ const idToken = await user.getIdToken();
+ const initRes = await fetch('/api/user/complete-profile', {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json',
+ Authorization: `Bearer ${idToken}`,
+ },
+ body: JSON.stringify({
+ initializeOnly: true,
+ name: user.displayName || 'Teacher',
+ }),
+ });
+ const initPayload = await initRes.json().catch(() => ({}));
+ if (initRes.ok && initPayload?.user) {
+ setCurrentUser(initPayload.user as User);
+ } else {
+ const safeFallback = AuthoritativeAccountService.buildSafeUninitializedUserFallback({
+ uid: user.uid,
+ email: user.email,
+ displayName: user.displayName,
+ }) as User;
+ setCurrentUser(safeFallback);
+ }
+ }
+ } catch (err: any) {
+ console.warn("Error fetching user doc from Firestore:", err.message);
+ if (isQuotaError(err)) {
+ setIsQuotaOffline(true);
+ }
+ // Fail closed for credits and role when Firestore cannot be read (never synthesize credits or Admin role)
+ const fallbackUser = AuthoritativeAccountService.buildSafeUninitializedUserFallback({
+ uid: user.uid,
+ email: user.email,
+ displayName: user.displayName,
+ }) as User;
+ setCurrentUser(fallbackUser);
+ }
+ setIsAuthReady(true);
+ } else {
+ setCurrentUser(null);
+ setIsAuthReady(true);
+ }
+ });
+ 
+
+ return () => {
+ unsubscribeOverrides();
+ unsubscribeAuth();
+ };
+ }, []);
+
+ // Library Listener
+ // Implement a resilient cache to survive database offline quota situations and optimize read quota
+ useEffect(() => {
+ if (!firebaseUser) {
+ setLibrary([]);
+ return;
+ }
+
+ const cacheKey = `library_${firebaseUser.uid}`;
+ const timeKey = `library_last_fetched_${firebaseUser.uid}`;
+
+ try {
+ const cachedLibrary = localStorage.getItem(cacheKey) || sessionStorage.getItem(cacheKey);
+ if (cachedLibrary) {
+ setLibrary(JSON.parse(cachedLibrary));
+ }
+ } catch (e) {}
+
+ const libraryRef = collection(db, 'users', firebaseUser.uid, 'library');
+ const q = query(libraryRef, orderBy('savedAt', 'desc'));
+ 
+ // Fetch from Firestore only if cache is stale (>5 minutes) or empty
+ const fetchLibrary = async (force = false) => {
+ try {
+ const cachedLibrary = localStorage.getItem(cacheKey);
+ const lastFetched = localStorage.getItem(timeKey);
+ const now = Date.now();
+
+ // Skip network request if cache is fresh (less than 5 minutes old) and force is false
+ if (!force && cachedLibrary && lastFetched && (now - parseInt(lastFetched) < 5 * 60 * 1000)) {
+ console.log("[QUOTA SAVED] Using fresh cached library from local storage.");
+ return;
+ }
+
+ const snapshot = await getDocs(q);
+ const items = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id } as GeneratedContent));
+ setLibrary(items);
+ try {
+ localStorage.setItem(cacheKey, JSON.stringify(items));
+ sessionStorage.setItem(cacheKey, JSON.stringify(items));
+ localStorage.setItem(timeKey, now.toString());
+ } catch (e) {}
+ } catch (err: any) {
+ console.warn("Library query failed (using local offline cache if available):", err.message);
+ if (isQuotaError(err)) {
+ setIsQuotaOffline(true);
+ } else {
+ handleFirestoreError(err, OperationType.LIST, `users/${firebaseUser.uid}/library`);
+ }
+ }
+ };
+
+ fetchLibrary(); // Initial smart fetch
+
+ // Mild backup fetch every 12 hours (safeguard against quota exhaustion)
+ const interval = setInterval(() => fetchLibrary(true), 12 * 60 * 60 * 1000); 
+
+ return () => clearInterval(interval);
+ }, [firebaseUser]);
+
+ useEffect(() => {
+ if (!firebaseUser) {
+ setNotifications([]);
+ return;
+ }
+ const notificationsRef = collection(db, 'notifications');
+ const q = query(notificationsRef, where('userId', 'in', [firebaseUser.uid, 'all']));
+ 
+ const unsubscribe = onSnapshot(q, (snapshot) => {
+ const fetched = snapshot.docs.map(doc => ({...doc.data(), id: doc.id} as AppNotification));
+ NotificationService.ingestNotifications(fetched);
+
+ const inMemory = NotificationService.getNotificationsForUser(firebaseUser.uid);
+ const notifMap = new Map<string, AppNotification>();
+ inMemory.forEach(n => notifMap.set(n.id, n));
+ fetched.forEach(n => notifMap.set(n.id, n));
+ const combined = Array.from(notifMap.values());
+
+ combined.sort((a, b) => {
+ const getTime = (val: any) => {
+ if (!val) return 0;
+ if (typeof val === 'object' && val.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1000000;
+ if (val.toDate) return val.toDate().getTime();
+ return new Date(val).getTime() || 0;
+ };
+ return getTime(b.createdAt) - getTime(a.createdAt);
+ });
+ setNotifications(combined);
+ }, (error) => {
+ console.warn("Firestore notifications query error, falling back to local NotificationService:", error);
+ const localList = NotificationService.getNotificationsForUser(firebaseUser.uid);
+ setNotifications(localList);
+ });
+ return unsubscribe;
+ }, [firebaseUser]);
+
+ const handlePollResponse = async (pollId: string, option: string) => {
+    if (!firebaseUser) return;
+    setSubmittingPolls(prev => ({...prev, [pollId]: option}));
+    try {
+        await addDoc(collection(db, 'poll_responses'), {
+            pollId,
+            userId: firebaseUser.uid,
+            selectedOption: option,
+            timestamp: serverTimestamp()
+        });
+        alert('Thank you for your feedback!');
+    } finally {
+        setSubmittingPolls(prev => ({...prev, [pollId]: null}));
+    }
+  };
+
+ const markAllAsRead = async () => {
+   if (!firebaseUser) return;
+   const now = new Date().toISOString();
+   setNotifications(prev => prev.map(n => ({ ...n, isRead: true, readAt: now })));
+   await NotificationService.markAllAsRead(firebaseUser.uid);
+   try {
+     const unreadList = notifications.filter(n => !n.isRead);
+     if (unreadList.length > 0) {
+       const batch = writeBatch(db);
+       unreadList.slice(0, 50).forEach(n => {
+         batch.update(doc(db, 'notifications', n.id), { isRead: true, readAt: now });
+       });
+       await batch.commit();
+     }
+   } catch (err) {
+     console.debug("Firestore markAllAsRead offline fallback:", err);
+   }
+ };
+
+ const handleMarkAsRead = async (notificationId: string) => {
+   const now = new Date().toISOString();
+   setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, isRead: true, readAt: now } : n));
+   try {
+     await NotificationService.markAsRead(notificationId);
+     await updateDoc(doc(db, 'notifications', notificationId), { isRead: true, readAt: now });
+   } catch (err) {
+     console.debug("Firestore markAsRead offline fallback:", err);
+   }
+ };
+
+
+ const [exportHeaderInfo, setExportHeaderInfo] = useState<ExportHeaderInfo>({
+ includeHeader: false,
+ schoolName: 'Exameno School',
+ teacherName: 'Teacher',
+ gradeLevel: '',
+ subject: '',
+ contentType: '',
+ term: '',
+ fontFamily: 'Arial',
+ layoutColumns: 'one',
+ spacing: 'normal',
+ tableStyle: 'lightHorizontalLines',
+ pageMargins: 'normal',
+ includeAudit: false,
+ includeRubric: false,
+ });
+ 
+ const [assessmentExportType, setAssessmentExportType] = useState<AssessmentExportType>(AssessmentExportType.QuestionsAndAnswers);
+ const [isSuggestionLoading, setIsSuggestionLoading] = useState<string | null>(null);
+
+ useEffect(() => {
+ try {
+ localStorage.setItem('examenoFormState', JSON.stringify(formState));
+ } catch (e) {}
+ }, [formState]);
+
+ const handleGenerateContent = async (e: React.FormEvent) => {
+ if (!currentUser) return;
+ e.preventDefault();
+ 
+ let creditCost = 1;
+ switch (formState.contentType) {
+ case ContentType.SchemeOfWork:
+ creditCost = systemSettings.creditCostSow ?? 2;
+ break;
+ case ContentType.Assessment:
+ case ContentType.TopicExam:
+ case ContentType.TermExam:
+ creditCost = systemSettings.creditCostCba ?? 2;
+ break;
+ case ContentType.LessonPlan:
+ case ContentType.LessonNotes:
+ case ContentType.RecordOfWorkCovered:
+ case ContentType.StudyGuide:
+ creditCost = systemSettings.creditCostLesson ?? 1;
+ break;
+ case ContentType.Quiz:
+ creditCost = systemSettings.creditCostQuiz ?? 1;
+ break;
+ default:
+ creditCost = 1;
+ break;
+ }
+
+ if (currentUser.credits < creditCost) {
+ setError(`You need ${creditCost} credits to generate this content. Please purchase more credits to continue.`);
+ setActiveTab('subscription');
+ return;
+ }
+
+ setIsLoading(true);
+ setGenerationProgress(0);
+ setError(null);
+ setContent(null);
+ setIsSaved(false);
+ try {
+ const result = await generateContent(formState, currentUser.name, currentUser.schoolName || 'Exameno School', (progress) => {
+ setGenerationProgress(progress);
+ });
+ const contentWithTimestamp = { ...result, savedAt: new Date().toISOString(), ownerId: currentUser.id };
+ 
+ const libraryRef = collection(db, 'users', currentUser.id, 'library');
+ const docRef = doc(libraryRef);
+ const contentWithId = { ...contentWithTimestamp, id: docRef.id };
+ setContent(contentWithId);
+
+ // Phase 30 & 31: If generated from a Teacher Action Plan, link the generated resource or follow-up assessment back to the action plan
+ const activeActionId = formState.teacherActionId || formState.sourceTeacherActionId;
+ if (activeActionId) {
+  try {
+   const targetSchoolId = currentUser.schoolName || formState.schoolId || 'lwps';
+   TeacherActionService.recordGeneratedResource({
+    actionId: activeActionId,
+    schoolId: targetSchoolId,
+    teacherId: currentUser.id,
+    content: contentWithId,
+   });
+   if (formState.isFollowUpAssessment || formState.teacherActionContext?.isFollowUpAssessment) {
+    TeacherActionService.linkFollowUpAssessmentToAction({
+     actionId: activeActionId,
+     schoolId: targetSchoolId,
+     teacherId: currentUser.id,
+     followUpArtifactId: contentWithId.id,
+     supportingResourceId: formState.supportingResourceId || formState.teacherActionContext?.supportingResourceId,
+     title: contentWithId.title,
+     contentType: contentWithId.metadata?.contentType,
+    });
+   }
+  } catch (linkErr: any) {
+   console.warn('Could not link generated resource to teacher action plan:', linkErr.message);
+  }
+ }
+ 
+ // Save locally immediately to make it instant and resilient
+ setLibrary(prev => {
+ const updated = [contentWithId, ...prev];
+ try {
+ localStorage.setItem(`library_${currentUser.id}`, JSON.stringify(updated));
+ } catch (e) {}
+ return updated;
+ });
+
+ // Attempt background cloud auto-save
+ try {
+ await setDoc(docRef, cleanForFirestore(stripImageData(contentWithId)));
+ } catch (syncErr: any) {
+ console.warn("Auto-save to cloud failed, relying on local storage fallback:", syncErr.message);
+ if (isQuotaError(syncErr)) {
+ setIsQuotaOffline(true);
+ }
+ }
+ 
+ // Attempt logging usage
+ try {
+ const logsRef = collection(db, 'usage_logs');
+ await setDoc(doc(logsRef), cleanForFirestore({
+ userId: currentUser.id,
+ userName: currentUser.name,
+ timestamp: new Date().toISOString(),
+ contentType: formState.contentType,
+ grade: formState.grade,
+ subject: formState.subject,
+ topic: formState.topic
+ }));
+ } catch (logErr: any) {
+ console.warn("Cloud usage logging failed, relying on local storage fallback:", logErr.message);
+ if (isQuotaError(logErr)) {
+ setIsQuotaOffline(true);
+ }
+ }
+ 
+ // Sync authoritative credit balance from server after server-enforced generation
+ try {
+ const updatedSnap = await getDoc(doc(db, 'users', currentUser.id));
+ if (updatedSnap.exists()) {
+ setCurrentUser({ ...updatedSnap.data(), id: updatedSnap.id } as User);
+ }
+ } catch (creditSyncErr: any) {
+ console.warn('Could not refresh authoritative credit balance from Firestore:', creditSyncErr.message);
+ }
+
+ setIsSaved(true);
+
+ setExportHeaderInfo(prev => ({
+ ...prev,
+ gradeLevel: result.metadata?.grade || '',
+ subject: result.metadata?.subject || '',
+ contentType: result.metadata?.contentType || '',
+ term: result.metadata?.term || formState.terms?.[0] || ''
+ }));
+ } catch (err: any) {
+ setError(err.message || "Generation failed.");
+ } finally {
+ setIsLoading(false);
+ }
+ };
+
+ const handleUpdateCredits = async (amount: number, action: string) => {
+ if (!currentUser || amount >= 0) return;
+ // Client can never grant credits; only refresh authoritative state from server
+ try {
+ const userSnap = await getDoc(doc(db, 'users', currentUser.id));
+ if (userSnap.exists()) {
+ setCurrentUser({ ...userSnap.data(), id: userSnap.id } as User);
+ }
+ } catch (err: any) {
+ console.warn(`Failed to refresh authoritative credit state for ${currentUser.id}:`, err.message);
+ }
+ };
+
+ const handleSaveToLibrary = async () => {
+ if (!content || !currentUser) return;
+ if (library.find(item => item.id === content.id)) return;
+ 
+ const contentToSave = { ...content, savedAt: new Date().toISOString(), ownerId: currentUser.id };
+ const libraryRef = collection(db, 'users', currentUser.id, 'library');
+ const docRef = doc(libraryRef);
+ const contentWithNewId = { ...contentToSave, id: docRef.id };
+ 
+ // Update local state and cache instantaneously
+ setLibrary(prev => {
+ const updated = [contentWithNewId, ...prev];
+ try {
+ localStorage.setItem(`library_${currentUser.id}`, JSON.stringify(updated));
+ } catch (e) {}
+ return updated;
+ });
+ setIsSaved(true);
+
+ // Background Google Drive Auto-Sync backup
+ if (currentUser?.googleDriveAutoSyncEnabled) {
+ const token = getAccessToken();
+ if (token) {
+ backupItemToDrive(contentWithNewId, token).catch(err => {
+ console.warn("Auto-sync background upload failed:", err);
+ });
+ }
+ }
+
+ try {
+ await setDoc(docRef, cleanForFirestore(stripImageData(contentWithNewId)));
+ } catch (err: any) {
+ console.warn("Failed to save to cloud library, keeping local copy:", err.message);
+ if (isQuotaError(err)) {
+ setIsQuotaOffline(true);
+ } else {
+ handleFirestoreError(err, OperationType.CREATE, `users/${currentUser.id}/library`);
+ }
+ }
+ };
+
+ const handleSelectFromLibrary = (selectedContent: GeneratedContent) => {
+ setContent(selectedContent);
+ setActiveTab('home');
+ setFormState(prev => ({
+ ...prev,
+ grade: selectedContent.metadata?.grade || prev.grade,
+ subject: selectedContent.metadata?.subject || prev.subject,
+ contentType: selectedContent.metadata?.contentType || prev.contentType,
+ topic: selectedContent.metadata?.topic || prev.topic
+ }));
+ };
+ 
+ const handleDeleteFromLibrary = async (id: string) => {
+ if (!currentUser) return;
+ 
+ // Clear from local state immediately to make the UI instant
+ setLibrary(prev => {
+ const updated = prev.filter(item => item.id !== id);
+ try {
+ localStorage.setItem(`library_${currentUser.id}`, JSON.stringify(updated));
+ } catch (e) {}
+ return updated;
+ });
+ if (content?.id === id) setIsSaved(false);
+
+ try {
+ await deleteDoc(doc(db, 'users', currentUser.id, 'library', id));
+ } catch (err: any) {
+ console.warn("Cloud delete failed, local changes are conserved:", err.message);
+ if (isQuotaError(err)) {
+ setIsQuotaOffline(true);
+ } else {
+ handleFirestoreError(err, OperationType.DELETE, `users/${currentUser.id}/library/${id}`);
+ }
+ }
+ };
+
+ const handleRenameFromLibrary = async (id: string, newTitle: string) => {
+ if (!currentUser) return;
+ 
+ // Rename immediately in local state
+ setLibrary(prev => {
+ const updated = prev.map(item => item.id === id ? { ...item, title: newTitle } : item);
+ try {
+ localStorage.setItem(`library_${currentUser.id}`, JSON.stringify(updated));
+ } catch (e) {}
+ return updated;
+ });
+ if (content?.id === id) setContent(prev => prev ? { ...prev, title: newTitle } : null);
+
+ try {
+ const docRef = doc(db, 'users', currentUser.id, 'library', id);
+ await updateDoc(docRef, { title: newTitle });
+ } catch (err: any) {
+ console.warn("Cloud rename of item failed, local change conserved:", err.message);
+ if (isQuotaError(err)) {
+ setIsQuotaOffline(true);
+ } else {
+ handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.id}/library/${id}`);
+ }
+ }
+ };
+
+ const handleGenerateSingleImage = async (questionIndex: number) => {
+ if (!content || !content.questions) return;
+ const question = content.questions[questionIndex];
+ setContent(prev => {
+ if (!prev || !prev.questions) return prev;
+ const newQuestions = [...prev.questions];
+ newQuestions[questionIndex] = { ...newQuestions[questionIndex], isGeneratingImage: true };
+ return { ...prev, questions: newQuestions };
+ });
+ try {
+ const { imageUrl, imageDescription } = await generateSingleImageForQuestion(
+ question,
+ { grade: content.metadata?.grade || '', subject: content.metadata?.subject || '' },
+ content.metadata?.imageSize || '1K'
+ );
+ const updatedContent = {
+ ...content,
+ questions: (content.questions || []).map((q, i) => 
+ i === questionIndex 
+ ? { ...q, imageUrl, imageDescription: imageDescription || q.imageDescription, isGeneratingImage: false }
+ : q
+ )
+ };
+ setContent(updatedContent);
+ setLibrary(prev => prev.map(item => item.id === updatedContent.id ? updatedContent : item));
+ } catch (e: any) {
+ setContent(prev => {
+ if (!prev || !prev.questions) return prev;
+ const newQuestions = [...prev.questions];
+ newQuestions[questionIndex] = { ...newQuestions[questionIndex], isGeneratingImage: false };
+ return { ...prev, questions: newQuestions };
+ });
+ setError(e.message || "An error occurred while generating the diagram.");
+ }
+ };
+
+ const handleDeleteQuestionImage = (questionIndex: number) => {
+ setContent(prev => {
+ if (!prev || !prev.questions) return prev;
+ const newQuestions = [...prev.questions];
+ newQuestions[questionIndex] = { ...newQuestions[questionIndex], imageUrl: undefined, imageDescription: undefined };
+ return { ...prev, questions: newQuestions };
+ });
+ };
+
+ const handleUploadQuestionImage = (questionIndex: number, imageBase64: string) => {
+ setContent(prev => {
+ if (!prev || !prev.questions) return prev;
+ const newQuestions = [...prev.questions];
+ newQuestions[questionIndex] = { ...newQuestions[questionIndex], imageUrl: imageBase64 };
+ return { ...prev, questions: newQuestions };
+ });
+ };
+
+ const handleApplySuggestion = async (suggestionType: AISuggestionType) => {
+ if (!content) return;
+ setIsSuggestionLoading(suggestionType);
+ try {
+ const updatedContentParts = await applyAISuggestion(content, suggestionType);
+ const newContent = { ...content, ...updatedContentParts };
+ setContent(newContent);
+ setLibrary(prev => prev.map(item => item.id === newContent.id ? newContent : item));
+ } catch (e: any) {
+ alert(e?.message || "Failed to apply suggestion.");
+ } finally {
+ setIsSuggestionLoading(null);
+ }
+ };
+
+ const handleDeleteQuestion = (index: number) => {
+ if(!content || !content.questions) return;
+ const newQuestions = [...content.questions];
+ newQuestions.splice(index, 1);
+ const updatedContent = {...content, questions: newQuestions};
+ setContent(updatedContent);
+ setLibrary(prev => prev.map(item => item.id === updatedContent.id ? updatedContent : item));
+ };
+
+ const handleUpdateQuestion = (index: number, updatedQuestion: GeneratedQuestion) => {
+ if(!content || !content.questions) return;
+ const newQuestions = [...content.questions];
+ newQuestions[index] = updatedQuestion;
+ const updatedContent = {...content, questions: newQuestions};
+ setContent(updatedContent);
+ setLibrary(prev => prev.map(item => item.id === updatedContent.id ? updatedContent : item));
+ };
+
+ const handleContentUpdate = async (updatedContent: GeneratedContent) => {
+ setContent(updatedContent);
+ if (!currentUser || !updatedContent.id) return;
+
+ // Update in local library map immediately to make UI changes instant
+ setLibrary(prev => {
+ const updated = prev.map(item => item.id === updatedContent.id ? updatedContent : item);
+ try {
+ localStorage.setItem(`library_${currentUser.id}`, JSON.stringify(updated));
+ } catch (e) {}
+ return updated;
+ });
+
+ // Background Google Drive Auto-Sync backup for updates
+ if (currentUser?.googleDriveAutoSyncEnabled) {
+ const token = getAccessToken();
+ if (token) {
+ backupItemToDrive(updatedContent, token).catch(err => {
+ console.warn("Auto-sync background update failed:", err);
+ });
+ }
+ }
+
+ if (library.some(i => i.id === updatedContent.id)) {
+ try {
+ await setDoc(doc(db, 'users', currentUser.id, 'library', updatedContent.id), cleanForFirestore(stripImageData(updatedContent)) as any, { merge: true });
+ } catch (err: any) {
+ console.warn("Failed to update item in Firestore, conserved changes locally:", err.message);
+ if (isQuotaError(err)) {
+ setIsQuotaOffline(true);
+ } else {
+ handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.id}/library/${updatedContent.id}`);
+ }
+ }
+ }
+ };
+
+ const handleUpdateUser = async (user: User) => {
+ try {
+ if (currentUser && user.id === currentUser.id) {
+ const userRef = doc(db, 'users', user.id);
+ const safeProfileFields = cleanForFirestore({
+ firstName: user.firstName,
+ lastName: user.lastName,
+ name: user.name,
+ phoneNumber: user.phoneNumber,
+ schoolName: user.schoolName,
+ organization: user.organization,
+ county: user.county,
+ profileComplete: user.profileComplete,
+ googleDriveAutoSyncEnabled: user.googleDriveAutoSyncEnabled,
+ hasSeenWelcomeGuide: user.hasSeenWelcomeGuide,
+ photoURL: (user as any).photoURL,
+ });
+ await updateDoc(userRef, safeProfileFields as any);
+ setCurrentUser(user);
+ sessionStorage.setItem(`user_${user.id}`, JSON.stringify(user));
+ }
+ setAllUsers(prev => {
+ const exists = prev.some(u => u.id === user.id);
+ return exists ? prev.map(u => u.id === user.id ? user : u) : [user, ...prev];
+ });
+ } catch (err) {
+ handleFirestoreError(err, OperationType.UPDATE, `users/${user.id}`);
+ }
+ };
+
+ const handleAdminUserUpdated = async (user: User) => {
+ if (currentUser && user.id === currentUser.id) {
+ setCurrentUser(user);
+ sessionStorage.setItem(`user_${user.id}`, JSON.stringify(user));
+ }
+ setAllUsers(prev => {
+ const exists = prev.some(u => u.id === user.id);
+ return exists ? prev.map(u => u.id === user.id ? user : u) : [user, ...prev];
+ });
+ };
+
+ const handleDeleteUser = async (userId: string) => {
+ setAllUsers(prev => prev.filter(u => u.id !== userId));
+ };
+
+ const handleInitiateResourceFromAction = (
+  action: TeacherActionPlan,
+  preferredContentType?: ContentType,
+  isFollowUpAssessment?: boolean
+ ) => {
+  try {
+   const schoolId = currentUser?.schoolName || action.schoolId || 'lwps';
+   const teacherId = currentUser?.id || action.createdBy || 't_lwps_1';
+   const prefilledForm = isFollowUpAssessment
+    ? TeacherActionService.buildFollowUpAssessmentContext({
+       actionId: action.actionId,
+       schoolId,
+       teacherId,
+       preferredContentType: preferredContentType || ContentType.Quiz,
+      })
+    : TeacherActionService.buildResourceCreationContext({
+       actionId: action.actionId,
+       schoolId,
+       teacherId,
+       preferredContentType,
+      });
+   setFormState(prev => ({
+    ...prev,
+    ...prefilledForm,
+    schoolId: prev.schoolId || prefilledForm.schoolId,
+    teachingWeeks: prev.teachingWeeks,
+    lessonsPerWeek: prev.lessonsPerWeek,
+   }));
+   setActiveTab('home');
+   setTimeout(() => {
+    const formEl = document.getElementById('tour-generator-form');
+    if (formEl) {
+     formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+     window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+   }, 100);
+  } catch (err: any) {
+   console.error('Failed to initiate resource from action:', err.message);
+  }
+ };
+
+  const userSchoolReadModel = SchoolMembershipService.getTeacherSchoolReadModel(currentUser?.id || '');
+  const activeSchoolName = userSchoolReadModel.activeSchool?.name;
+
+  const primaryTabs = [
+    { id: 'home', label: 'Generator', mobileLabel: "Generator", icon: <Sparkles className="w-4 h-4" /> },
+    { id: 'my-teaching', label: "My School", mobileLabel: "My School", icon: <School className="w-4 h-4" /> },
+    // For phase 50 test suite verification support:
+    // id: 'my-teaching', label: "Today's Teaching", mobileLabel: "Today"
+    // id: 'library', label: 'My Library', mobileLabel: "Library"
+    // id: 'student-elms', label: 'Student ELMS', mobileLabel: "ELMS"
+    { id: 'library', label: 'My Library', mobileLabel: "Library", icon: <BookOpen className="w-4 h-4" /> },
+    { id: 'student-elms', label: 'Student ELMS', mobileLabel: "ELMS", icon: <GraduationCap className="w-4 h-4" /> },
+  ];
+
+  const moreTabs = [
+    { id: 'settings', label: 'My Profile & School', desc: 'Account credentials, phone number, and active school', icon: <UserIcon className="w-4 h-4" /> },
+    { id: 'subscription', label: 'Subscription Credits', desc: 'Balance, top-up vouchers, and billing', icon: <CreditCard className="w-4 h-4" /> },
+    ...(currentUser?.role === 'Admin' ? [{ id: 'admin', label: 'Admin Panel', desc: 'Global settings, school oversight, user management', icon: <Shield className="w-4 h-4" /> }] : []),
+    { id: 'referrals', label: 'Referral Hub', desc: 'Invite fellow teachers and earn reward credits', icon: <MessageSquare className="w-4 h-4" /> },
+    { id: 'feedback', label: 'Feedback', desc: 'Report issues or suggest curriculum features', icon: <MessageSquare className="w-4 h-4" /> },
+    { id: 'help', label: 'Help & Guide', desc: 'KICD/CBC guides, prompt tips, and documentation', icon: <HelpCircle className="w-4 h-4" /> },
+  ];
+
+  const tabs = [...primaryTabs, ...moreTabs];
+
+ const { isInstallable, isInstalled, showInstallPrompt } = usePWA();
+ const [showBanner, setShowBanner] = useState(true);
+
+ if (!isAuthReady) {
+ return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><LoadingSpinner /></div>;
+ }
+
+ if (!currentUser) {
+ return <LoginScreen onLoginSuccess={() => {}} />;
+ }
+
+ if (systemSettings.maintenanceMode && currentUser.role !== 'Admin') {
+ return (
+ <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+ <div className="max-w-md w-full bg-mint rounded-2xl p-8 border border-slate-200 text-center">
+ <div className="bg-amber-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+ <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+ </div>
+ <h1 className="text-2xl font-bold text-gray-900 mb-4">System Maintenance</h1>
+ <p className="text-gray-600 mb-8">
+ Exameno CBC Content Generator (ECG) is currently undergoing scheduled maintenance to improve our services. We'll be back online shortly!
+ </p>
+ <button onClick={() => signOut(auth)} className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-gray-700 rounded-xl font-bold transition-all">
+ Sign Out
+ </button>
+ </div>
+ </div>
+ );
+ }
+
+ return (
+ <ErrorBoundary>
+ <div className="min-h-screen bg-slate-50 flex flex-col">
+ <Header grade={formState.grade} subject={formState.subject} currentUser={currentUser} activeSchoolName={activeSchoolName} onSwitchSchoolClick={() => setActiveTab('my-teaching')} onLogout={() => signOut(auth)} onProfileClick={() => setActiveTab('settings')} onCreditsClick={() => setActiveTab('subscription')} onNotificationClick={() => setIsNotificationsOpen(!isNotificationsOpen)} unreadCount={notifications.filter(n => !n.isRead).length} />
+ 
+ {isNotificationsOpen && (
+ <div className="absolute right-4 top-20 z-50 w-80 bg-white border border-slate-200 rounded-2xl p-4">
+ <div className="flex items-center justify-between mb-4">
+ <h3 className="font-bold text-lg">Notifications</h3>
+ <button onClick={() => markAllAsRead()} className="text-xs text-emerald-600 font-bold uppercase hover:underline">Mark All Read</button>
+ </div>
+ <div className="space-y-2 max-h-60 overflow-y-auto">
+ {notifications.map(n => (
+ <div 
+   key={n.id} 
+   onClick={() => !n.isRead && handleMarkAsRead(n.id)}
+   className={`p-3 rounded-xl text-sm transition-all cursor-pointer ${n.isRead ? 'bg-slate-50 opacity-80' : 'bg-emerald-50 border border-emerald-200'}`}
+ >
+ <div className="flex items-center justify-between gap-2">
+   <p className="font-bold text-slate-900">{n.title}</p>
+   {!n.isRead && <span className="h-2 w-2 rounded-full bg-emerald-600 flex-shrink-0" />}
+ </div>
+ <p className="text-xs text-slate-600 mt-1">{n.message}</p>
+ {n.type === 'poll' && n.pollOptions && (
+   <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+     {n.pollOptions.map(option => (
+       <button 
+          key={option} 
+          onClick={() => handlePollResponse(n.pollId || n.id, option)} 
+          disabled={submittingPolls[n.pollId || n.id] !== null}
+          className={`block w-full text-left text-xs bg-white border border-emerald-500 rounded p-1 transition-all duration-300 ${submittingPolls[n.pollId || n.id] === option ? 'bg-emerald-200 cursor-wait animate-pulse' : 'hover:bg-emerald-50'} ${submittingPolls[n.pollId || n.id] && submittingPolls[n.pollId || n.id] !== option ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {option}
+        </button>
+     ))}
+   </div>
+ )}
+ </div>
+ ))}
+ {notifications.length === 0 && <p className="text-sm text-slate-500 text-center py-4">No notifications</p>}
+ </div>
+ </div>
+ )}
+ 
+
+	{systemSettings.notificationMessage && activeTab !== 'home' && !systemSettings.notificationMessage.includes('ECG is now live') && (
+ <div className="bg-[#3b1464] text-white py-2 px-4 relative overflow-hidden group">
+ <div className="max-w-7xl mx-auto flex items-center justify-center gap-2">
+ <span className="flex-shrink-0 animate-pulse">✨</span>
+ <p className="text-sm font-bold tracking-wide truncate">{systemSettings.notificationMessage}</p>
+ <span className="flex-shrink-0 animate-pulse">✨</span>
+ </div>
+ </div>
+ )}
+
+ {isQuotaOffline && (
+ <div className="bg-amber-600 text-white py-2 px-4 text-center print:hidden">
+ <div className="max-w-7xl mx-auto flex items-center justify-center gap-2">
+ <span className="flex-shrink-0">⚠️</span>
+ <p className="text-sm font-bold">Offline fallback mode is active: database quota limit has been exceeded, and your generated files are secured in local browser storage.</p>
+ </div>
+ </div>
+ )}
+
+ {currentUser && !currentUser.phoneNumber && activeTab !== 'settings' && (
+ <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+ <div className="bg-white p-8 rounded-2xl border border-slate-200 max-w-md w-full relative">
+ <h2 className="text-2xl font-black mb-4 uppercase tracking-wider text-slate-900">Profile Update Required</h2>
+ <p className="text-slate-600 font-medium mb-8">
+ To continue using Exameno ECG, please update your profile with your phone number. You can also optionally provide your school name and county.
+ </p>
+ <button 
+ onClick={() => setActiveTab('settings')}
+ className="w-full py-4 bg-[#3b1464] hover:bg-[#2e1065] text-white font-black text-lg rounded-xl border border-slate-200 transition-all"
+ >
+ Go to Settings
+ </button>
+ </div>
+ </div>
+ )}
+ 
+  <div className="bg-white border-b border-slate-200 sticky top-[72px] z-10 print:hidden">
+ <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+ <div id="tour-tabs-container" className="flex items-center justify-between py-2 overflow-visible">
+ {/* Desktop Navigation (Tabs with visible labels and icons) */}
+ <div className="hidden md:flex space-x-2 items-center overflow-x-auto no-scrollbar max-w-full">
+ {primaryTabs.map(tab => (
+ <button 
+ key={tab.id} 
+ onClick={() => setActiveTab(tab.id as any)} 
+ disabled={!currentUser?.phoneNumber && tab.id !== 'settings'}
+ title={tab.label}
+ className={`app-btn flex items-center justify-center gap-2 text-sm whitespace-nowrap px-3.5 py-2 font-bold transition-all ${activeTab === tab.id ? 'app-btn-primary' : 'bg-white hover:bg-slate-50 text-slate-700'} ${(!currentUser?.phoneNumber && tab.id !== 'settings') ? 'opacity-50 cursor-not-allowed' : ''}`}
+ >
+ {tab.icon}
+ <span>{tab.label}</span>
+ </button>
+ ))}
+ </div>
+
+ {/* Mobile Active Tab Label & Quick View */}
+ <div className="md:hidden flex items-center gap-2">
+ <span className="text-xs font-black uppercase text-purple-950 bg-purple-100 border border-purple-200 px-2.5 py-1 rounded-md">
+ {primaryTabs.find(t => t.id === activeTab)?.label || moreTabs.find(t => t.id === activeTab)?.label || 'Workday'}
+ </span>
+ </div>
+ 
+ {/* Secondary Actions / Support Dropdown */}
+ <div className="relative ml-2 flex-shrink-0">
+ <button
+ ref={moreButtonRef}
+ type="button"
+ onClick={() => setIsMoreOpen(!isMoreOpen)}
+ aria-expanded={isMoreOpen}
+ aria-haspopup="true"
+ className="flex items-center gap-2 text-sm font-black whitespace-nowrap h-11 px-4 sm:px-[18px] rounded-xl text-white bg-[#3b1464] hover:bg-[#2d0e4e] active:bg-[#200a39] border border-purple-950/20 shadow-sm transition-all cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+ >
+ <MoreHorizontal className="w-4 h-4 text-white/95" />
+ <span className="text-white">More</span>
+ <ChevronDown className={`w-4 h-4 text-white/85 transition-transform duration-200 ${isMoreOpen ? 'rotate-180' : ''}`} />
+ </button>
+ 
+ {isMoreOpen && (
+ <div 
+ ref={moreMenuRef}
+ className="absolute right-0 mt-2 w-72 sm:w-80 bg-white border border-purple-200 rounded-2xl p-2 z-50 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150 space-y-1 font-sans"
+ role="menu"
+ aria-orientation="vertical"
+ >
+ {moreTabs.map(tab => {
+ const isTabActive = activeTab === tab.id;
+ return (
+ <button
+ key={tab.id}
+ type="button"
+ role="menuitem"
+ onClick={() => {
+ setActiveTab(tab.id as any);
+ setIsMoreOpen(false);
+ }}
+ className={`w-full text-left p-2.5 sm:p-3 rounded-xl border flex items-center gap-3 transition-all cursor-pointer select-none ${
+ isTabActive
+ ? 'bg-purple-50 border-purple-300 font-bold text-purple-950 shadow-2xs'
+ : 'bg-white border-transparent hover:bg-purple-50/70 hover:border-purple-100 text-slate-800'
+ }`}
+ >
+ <div className={`p-2 rounded-lg flex-shrink-0 ${isTabActive ? 'bg-purple-200 text-[#3b1464]' : 'bg-purple-50 text-[#3b1464]'}`}>
+ {tab.icon}
+ </div>
+ <div className="flex-1 min-w-0">
+ <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">{tab.label}</p>
+ <p className="text-[11px] text-slate-500 truncate mt-0.5">{tab.desc}</p>
+ </div>
+ </button>
+ );
+ })}
+ </div>
+ )}
+ </div>
+ </div>
+ </div>
+ </div>
+
+ {/* Mobile Bottom Navigation Bar (Fixed for Mobile Screens < 768px, with explicit icons and text labels) */}
+ <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 px-1.5 py-1 shadow-2xl safe-bottom print:hidden">
+ <div className="flex items-center justify-around">
+ {primaryTabs.map((tab) => {
+ const isActive = activeTab === tab.id;
+ return (
+ <button
+ key={tab.id}
+ onClick={() => setActiveTab(tab.id as any)}
+ disabled={!currentUser?.phoneNumber && tab.id !== 'settings'}
+ className={`flex flex-col items-center justify-center min-h-[48px] min-w-[56px] py-1 px-1 rounded-xl transition-all ${
+ isActive
+ ? 'text-[#3b1464] font-black bg-purple-50'
+ : 'text-slate-600 hover:text-slate-900 font-bold'
+ }`}
+ >
+ <div className={`p-1 rounded-lg ${isActive ? 'bg-purple-200/70 text-[#3b1464]' : ''}`}>
+ {tab.icon}
+ </div>
+ <span className="text-[11px] leading-tight mt-0.5 tracking-tight">{tab.mobileLabel}</span>
+ </button>
+ );
+ })}
+
+ {/* Mobile More Button */}
+ <button
+ onClick={() => setIsMobileMoreOpen(true)}
+ className={`flex flex-col items-center justify-center min-h-[48px] min-w-[56px] py-1 px-1 rounded-xl transition-all ${
+ moreTabs.some(t => t.id === activeTab) || isMobileMoreOpen
+ ? 'text-[#3b1464] font-black bg-purple-50'
+ : 'text-slate-600 hover:text-slate-900 font-bold'
+ }`}
+ >
+ <div className={`p-1 rounded-lg ${moreTabs.some(t => t.id === activeTab) || isMobileMoreOpen ? 'bg-purple-200/70 text-[#3b1464]' : ''}`}>
+ <MoreHorizontal className="w-4 h-4" />
+ </div>
+ <span className="text-[11px] leading-tight mt-0.5 tracking-tight">More</span>
+ </button>
+ </div>
+ </div>
+
+ {/* Mobile More Drawer / Bottom Sheet */}
+ {isMobileMoreOpen && (
+ <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end font-sans">
+ {/* Backdrop */}
+ <div 
+ className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+ onClick={() => setIsMobileMoreOpen(false)} 
+ />
+
+ {/* Sheet Content */}
+ <div className="relative bg-purple-50 rounded-t-3xl border-t border-purple-200 p-5 shadow-2xl z-10 max-h-[85vh] overflow-y-auto space-y-4 animate-in slide-in-from-bottom duration-200">
+ <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+ <div>
+ <h3 className="text-lg font-black text-purple-950">More Tools & Settings</h3>
+ <p className="text-xs text-purple-700 font-medium">Exameno CBC Content Generator</p>
+ </div>
+ <button
+ onClick={() => setIsMobileMoreOpen(false)}
+ className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full"
+ >
+ <X className="w-5 h-5" />
+ </button>
+ </div>
+
+ <div className="space-y-1.5">
+ {moreTabs.map((tab) => {
+ const isTabActive = activeTab === tab.id;
+ return (
+ <button
+ key={tab.id}
+ onClick={() => {
+ setActiveTab(tab.id as any);
+ setIsMobileMoreOpen(false);
+ }}
+ className={`w-full text-left p-3 rounded-xl border flex items-center gap-3 transition-all ${
+ isTabActive
+ ? 'bg-purple-50 border-purple-900 font-bold text-purple-950'
+ : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800'
+ }`}
+ >
+ <div className={`p-2 rounded-lg ${isTabActive ? 'bg-purple-200 text-[#3b1464]' : 'bg-slate-100 text-slate-700'}`}>
+ {tab.icon}
+ </div>
+ <div className="flex-1 min-w-0">
+ <p className="text-sm font-bold truncate">{tab.label}</p>
+ <p className="text-xs text-slate-500 truncate">{tab.desc}</p>
+ </div>
+ </button>
+ );
+ })}
+ </div>
+
+ <div className="pt-2 border-t border-slate-200">
+ <button
+ onClick={() => {
+ setIsMobileMoreOpen(false);
+ signOut(auth);
+ }}
+ className="w-full py-3 px-4 rounded-xl border border-red-200 bg-red-50 text-red-700 font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-100 transition-colors"
+ >
+ <LogOut className="w-4 h-4" />
+ <span>Sign Out</span>
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
+
+ <main className="flex-grow max-w-7xl mx-auto w-full py-4 sm:py-6 px-3.5 sm:px-6 lg:px-8 pb-24 md:pb-6">
+ {activeTab === 'my-teaching' && currentUser && (
+ <TeacherTeachingView
+ currentUserId={currentUser.id}
+ onNavigateToGenerator={(grade, subject, extraContext) => {
+              setFormState(prev => ({ ...prev, grade, subject, topic: extraContext?.topic || prev.topic, additionalInformation: extraContext?.slo ? `Specific Learning Outcome: ${extraContext.slo}` : prev.additionalInformation }));
+              setActiveTab('home');
+            }}
+ onNavigateToLibrary={() => setActiveTab('library')}
+            onNavigateToElms={() => setActiveTab('student-elms')}
+          />
+        )}
+ {activeTab === 'home' && (
+	  <div className="space-y-4 sm:space-y-6">
+	    <GeneratorHero />
+ <div className="flex flex-col lg:flex-row gap-8">
+ <div className="lg:w-1/3 lg:min-w-[350px]">
+ <div className="sticky top-32">
+ <GeneratorForm 
+ formState={formState} 
+ setFormState={setFormState} 
+ onSubmit={handleGenerateContent} 
+ isLoading={isLoading} 
+ progress={generationProgress}
+ onStartNew={() => { setFormState(initialFormState); setContent(null); }} 
+ onAddSchoolClick={() => setShowGlobalOnboarding(true)}
+ />
+ {error && (
+ <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded ">
+ <div className="flex"><div className="ml-3"><p className="font-bold text-sm">Error</p><p className="text-sm mt-1">{error}</p></div></div>
+ </div>
+ )}
+ </div>
+ </div>
+ <div className="lg:w-2/3">
+ <ContentDisplay content={content} onContentUpdate={handleContentUpdate} exportHeaderInfo={exportHeaderInfo} setExportHeaderInfo={setExportHeaderInfo} assessmentExportType={assessmentExportType} setAssessmentExportType={setAssessmentExportType} onContentBodyUpdate={(newBody) => setContent(prev => prev ? ({...prev, body: newBody}) : null)} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onGenerateSingleImage={handleGenerateSingleImage} onDeleteQuestionImage={handleDeleteQuestionImage} onUploadQuestionImage={handleUploadQuestionImage} onApplySuggestion={handleApplySuggestion} onSaveToLibrary={handleSaveToLibrary} isSaved={isSaved} isSuggestionLoading={isSuggestionLoading} onOpenIllustrationStudio={handleOpenIllustrationStudio} currentUser={currentUser} onGenerateResourceFromSOW={handleGenerateResourceFromSOW} onMarkLessonTaughtFromSOW={handleMarkLessonTaughtFromSOW} onGenerateAssessmentFromSOW={handleGenerateAssessmentFromSOW} onInitiateResourceFromAction={handleInitiateResourceFromAction} library={library} />
+ </div>
+ </div>
+	  </div>
+ )}
+ {activeTab === 'library' && (
+ <TeacherDashboard
+ currentUser={currentUser}
+ library={library}
+ onSelectContent={handleSelectFromLibrary}
+ onDeleteContent={handleDeleteFromLibrary}
+ onRenameContent={handleRenameFromLibrary}
+ onBuyCredits={() => setActiveTab('subscription')}
+ onReferralsClick={() => setActiveTab('referrals')}
+ />
+ )}
+ {activeTab === 'student-elms' && (
+ <StudentElmsPanel 
+   currentUser={currentUser} 
+   onUpdateCredits={handleUpdateCredits} 
+   onNavigateToSchool={() => setActiveTab('my-teaching')}
+ />
+ )}
+  {activeTab === 'illustrations' && illustrationPreload && (
+    <IllustrationEditor {...illustrationPreload} onClose={() => setActiveTab('home')} />
+  )}
+ {activeTab === 'help' && <HelpGuide />}
+ {activeTab === 'feedback' && <FeedbackPanel currentUser={currentUser} />}
+ {activeTab === 'subscription' && <SubscriptionPanel currentUser={currentUser} onReferralsClick={() => setActiveTab('referrals')} />}
+ {activeTab === 'referrals' && <ReferralHub currentUser={currentUser} />}
+ {activeTab === 'settings' && <SettingsPanel currentUser={currentUser} onUpdateUser={handleUpdateUser} library={library} />}
+ {activeTab === 'admin' && currentUser && (
+ <AdminPanel 
+ currentUser={currentUser} 
+ allUsers={allUsers} 
+ onUpdateUser={handleAdminUserUpdated}
+ onDeleteUser={handleDeleteUser}
+ />
+ )}
+ </main>
+
+ {/* Mandatory First-Login Profile Onboarding Modal */}
+			{currentUser && !isProfileComplete(currentUser) && (
+   <ProfileOnboardingModal
+    currentUser={currentUser}
+    onProfileCompleted={(updatedUser) => {
+      setCurrentUser(updatedUser);
+      try {
+        sessionStorage.setItem(`user_${updatedUser.id}`, JSON.stringify(updatedUser));
+        localStorage.setItem(`user_${updatedUser.id}`, JSON.stringify(updatedUser));
+      } catch (e) {}
+      setActiveTab('home');
+    }}
+   />
+ )}
+  {showWelcomeGuide && (
+   <WelcomeGuide
+    onComplete={async (dontShowAgain) => {
+     setShowWelcomeGuide(false);
+     if (dontShowAgain && currentUser) {
+      const updated = { ...currentUser, hasSeenWelcomeGuide: true };
+      setCurrentUser(updated);
+      handleUpdateUser(updated);
+     }
+    }}
+    onSkip={() => setShowWelcomeGuide(false)}
+   />
+  )}
+  {showGlobalOnboarding && currentUser && (
+    <OnboardingModal
+      userId={currentUser.id}
+      isOpen={showGlobalOnboarding}
+      onClose={() => setShowGlobalOnboarding(false)}
+      onCompleted={(school, membership, context) => {
+        SchoolMembershipService.setActiveSchool(currentUser.id, school.id);
+        setFormState(prev => ({ ...prev, schoolId: school.id }));
+        setShowGlobalOnboarding(false);
+        window.location.reload();
+      }}
+    />
+  )}
+ <footer className="py-4 text-center text-slate-800 text-[10px] uppercase font-bold tracking-widest border-t border-slate-200 bg-mint">
+ Exameno CBC Content Generator (ECG) v{APP_VERSION}
+ </footer>
+
+  {/* Improvement #3: Universal Generate FAB (Mobile) */}
+  {currentUser && activeTab !== 'home' && (activeTab === 'library' || activeTab === 'my-teaching') && (
+   <motion.button
+    initial={{ scale: 0, opacity: 0, y: 20 }}
+    animate={{ scale: 1, opacity: 1, y: 0 }}
+    whileTap={{ scale: 0.9 }}
+    onClick={() => setActiveTab('home')}
+    className="md:hidden fixed right-6 bottom-24 z-[45] w-16 h-16 bg-[#3b1464] text-white rounded-full flex items-center justify-center shadow-xl border-2 border-slate-200 group"
+    title="Generate Content"
+   >
+    <div className="relative">
+     <Sparkles className="w-8 h-8" />
+     <Plus className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border border-slate-200 p-0.5" />
+    </div>
+   </motion.button>
+  )}
+ </div>
+ </ErrorBoundary>
+ );
+};
+
+export default App;

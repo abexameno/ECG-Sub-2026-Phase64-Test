@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{userId}/sow-source-documents/{fileName} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+      function isAllowedDocument() {
+        return request.resource != null
+          && request.resource.size > 0
+          && request.resource.size <= 20 * 1024 * 1024
+          && request.resource.contentType in [
+            'application/pdf',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/octet-stream',
+            'text/plain'
+          ];
+      }
+      allow read: if isOwner();
+      allow create: if isOwner() && isAllowedDocument();
+      allow update: if false;
+      allow delete: if isOwner();
+    }
+  }
+}

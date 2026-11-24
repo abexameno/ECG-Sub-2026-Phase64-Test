@@ -1,0 +1,417 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function isEmailVerified() { return isSignedIn() && request.auth.token.email_verified != false; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    function isPlatformAdmin() {
+      return isSignedIn() &&
+        (
+          !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+          !(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'Active') in ['Inactive', 'Suspended'])
+        ) && (
+          request.auth.token.admin == true ||
+          request.auth.token.role == 'Admin' ||
+          (
+            exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin' &&
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'Active') == 'Active'
+          )
+        );
+    }
+
+    function isSchoolAdminFor(schoolId) {
+      return isSignedIn() && schoolId is string && schoolId.size() > 0 && (
+        isPlatformAdmin() ||
+        (
+          exists(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)) &&
+          get(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)).data.userId == request.auth.uid &&
+          get(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)).data.schoolId == schoolId &&
+          get(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)).data.status == 'ACTIVE' &&
+          (
+            get(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)).data.role == 'SCHOOL_ADMIN' ||
+            get(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)).data.role == 'SUPER_ADMIN'
+          )
+        )
+      );
+    }
+
+    function isActiveSchoolMember(schoolId) {
+      return isSignedIn() && schoolId is string && schoolId.size() > 0 && (
+        isPlatformAdmin() ||
+        (
+          exists(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)) &&
+          get(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)).data.userId == request.auth.uid &&
+          get(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)).data.schoolId == schoolId &&
+          get(/databases/$(database)/documents/schoolMemberships/$('mem_' + request.auth.uid + '_' + schoolId)).data.status == 'ACTIVE'
+        )
+      );
+    }
+
+    function isValidSchoolScopedWrite(schoolId) {
+      return isPlatformAdmin() || (
+        isActiveSchoolMember(schoolId) &&
+        (!('schoolId' in request.resource.data) || request.resource.data.schoolId == schoolId)
+      );
+    }
+
+    function isValidTransaction(data) {
+      return data.userId is string &&
+             data.amount is number &&
+             data.transactionNumber is string &&
+             data.status is string &&
+             (data.status == 'PENDING_VERIFICATION' || data.status == 'VERIFIED' || data.status == 'REJECTED') &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (userId == request.auth.uid || isPlatformAdmin());
+      
+      allow create: if isEmailVerified() && userId == request.auth.uid
+                    && (!request.resource.data.keys().hasAny([
+                      'isAdmin', 'schoolId', 'tenantId',
+                      'firstLoginBonusGranted', 'welcomeCreditsGranted',
+                      'referredBy', 'referralClaimed'
+                    ]))
+                    && (!('role' in request.resource.data) || request.resource.data.role == 'Teacher')
+                    && request.resource.data.keys().hasOnly([
+                      'id', 'name', 'firstName', 'lastName', 'email', 'phoneNumber',
+                      'role', 'status', 'credits', 'creditLogs', 'avatarColor',
+                      'schoolName', 'county', 'createdAt', 'updatedAt', 'dateJoined'
+                    ])
+                    && (request.resource.data.get('credits', 0) >= 0 && request.resource.data.get('credits', 0) <= 5);
+
+      allow update: if isEmailVerified() && userId == request.auth.uid
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                      'role', 'isAdmin', 'schoolId', 'tenantId',
+                      'firstLoginBonusGranted', 'welcomeCreditsGranted',
+                      'referredBy', 'referralClaimed'
+                    ]))
+                    && (
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['credits', 'creditLogs']) ||
+                      (
+                        request.resource.data.get('credits', 0) < resource.data.get('credits', 0) &&
+                        request.resource.data.get('credits', 0) >= 0
+                      )
+                    );
+
+      allow delete: if false;
+      
+      match /library/{contentId} {
+        allow read, write: if isSignedIn() && userId == request.auth.uid;
+      }
+      
+      match /elms_invites/{inviteId} {
+        allow read, write: if isSignedIn() && userId == request.auth.uid;
+      }
+
+      match /illustrations/{mediaId} {
+        allow read, write: if isSignedIn() && userId == request.auth.uid;
+      }
+
+      match /notifications/{notifId} {
+        allow read, write: if isSignedIn() && userId == request.auth.uid;
+      }
+    }
+
+    match /credit_reservations/{reservationId} {
+      allow read, write: if false; // Server-authoritative only via Admin SDK
+    }
+
+    match /usage_logs/{logId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isPlatformAdmin());
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if isSignedIn();
+      allow read, update: if isPlatformAdmin();
+    }
+    
+    match /settings/{settingId} {
+      allow read: if settingId != 'secrets';
+      allow write: if false; // Only admin via backend
+    }
+
+    match /adminAuditLogs/{logId} {
+      allow read: if isPlatformAdmin();
+      allow write: if false; // Server-authoritative only via Admin SDK
+    }
+
+    match /test/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /curriculum_overrides/{key} {
+      allow read: if isSignedIn();
+      allow write: if isPlatformAdmin();
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isPlatformAdmin());
+      allow create: if isSignedIn() && isValidTransaction(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false; // Admin updates this via backend API
+    }
+
+    match /polls/{pollId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /poll_responses/{responseId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+    
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isPlatformAdmin());
+      allow create: if isPlatformAdmin();
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      allow delete: if false;
+    }
+
+    match /referrals/{referralId} {
+      allow read: if isSignedIn() && (
+        isPlatformAdmin() ||
+        resource.data.inviterId == request.auth.uid ||
+        resource.data.inviteeId == request.auth.uid
+      );
+      allow create, update, delete: if false; // Server-authoritative only via /api/user/complete-profile
+    }
+
+    match /schoolDirectory/{schoolId} {
+      allow read: if isSignedIn();
+      allow create, update: if isPlatformAdmin() || isSchoolAdminFor(schoolId);
+      allow delete: if false;
+    }
+
+    match /schools/{schoolId} {
+      allow read: if isSignedIn();
+      allow create: if isPlatformAdmin() || (
+        isSignedIn() &&
+        !exists(/databases/$(database)/documents/schools/$(schoolId)) &&
+        request.resource.data.id == schoolId &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.status == 'active' &&
+        !request.resource.data.keys().hasAny([
+          'subscriptionTier', 'quotaOverride', 'securityConfig',
+          'elmsSharedSecret', 'verifiedByAdmin'
+        ])
+      );
+      allow update: if isPlatformAdmin() || (
+        isSchoolAdminFor(schoolId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'id', 'createdBy', 'canonicalSchoolId', 'subscriptionTier',
+          'quotaOverride', 'securityConfig', 'elmsSharedSecret', 'verifiedByAdmin'
+        ])
+      );
+      allow delete: if false;
+
+      match /elms_connections/{connectionId} {
+        allow read, create, update: if isPlatformAdmin() || isSchoolAdminFor(schoolId);
+        allow delete: if false;
+      }
+
+      match /artifacts/{artifactId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /content_artifacts/{artifactId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /teacher_actions/{actionId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /follow_up_comparisons/{comparisonId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /teacher_action_comparisons/{comparisonId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /assessments/{assessmentId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /assessment_attempts/{attemptId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /assessment_responses/{responseId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /assessment_evaluations/{evaluationId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /outcome_evidence/{evidenceId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /elms_evidence/{evidenceRecordId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /elms_publications/{publicationId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /elms_assignments/{assignmentId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /elms_learner_mappings/{mappingId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /elms_class_mappings/{mappingId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /elms_mappings/{mappingId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /elms_learning_events/{eventId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /elms_events/{eventId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /assessment_overrides/{overrideId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /class_groups/{classGroupId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /learners/{learnerId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /class_rosters/{rosterId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /teaching_activities/{activityId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+
+      match /learner_activities/{activityId} {
+        allow read: if isActiveSchoolMember(schoolId);
+        allow create, update: if isValidSchoolScopedWrite(schoolId);
+        allow delete: if false;
+      }
+    }
+
+    match /schoolMemberships/{membershipId} {
+      allow read: if isSignedIn() && (
+        isPlatformAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        isSchoolAdminFor(resource.data.schoolId)
+      );
+      allow create: if isPlatformAdmin() ||
+        isSchoolAdminFor(request.resource.data.schoolId) ||
+        (
+          isSignedIn() &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.role == 'TEACHER' &&
+          request.resource.data.status == 'PENDING' &&
+          request.resource.data.schoolId is string &&
+          request.resource.data.schoolId.size() > 0
+        );
+      allow update: if isPlatformAdmin() ||
+        isSchoolAdminFor(resource.data.schoolId) ||
+        (
+          isSignedIn() &&
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.schoolId == resource.data.schoolId &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.status == 'REMOVED'
+        );
+      allow delete: if false;
+    }
+
+    match /teacher_profiles/{userId} {
+      allow read: if isSignedIn() && (userId == request.auth.uid || isPlatformAdmin());
+      allow create, update: if isSignedIn() && (userId == request.auth.uid || isPlatformAdmin())
+                            && request.resource.data.userId == userId;
+      allow delete: if false;
+    }
+
+    match /sent_emails/{emailId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /portfolio_exports/{exportId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

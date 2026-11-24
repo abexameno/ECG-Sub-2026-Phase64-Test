@@ -1,0 +1,14 @@
+{
+  "assessment": {
+    "status": "FAIL",
+    "error": "Assessment API Error: 429"
+  },
+  "quiz": {
+    "status": "FAIL",
+    "error": "Quiz API Error: 429"
+  },
+  "rowc": {
+    "status": "FAIL",
+    "error": "ROWC API Error: 429"
+  }
+}

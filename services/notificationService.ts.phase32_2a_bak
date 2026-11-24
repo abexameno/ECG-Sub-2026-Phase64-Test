@@ -1,0 +1,357 @@
+import { AppNotification, NotificationType } from '../types.ts';
+import { db } from '../firebase.ts';
+import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+
+export interface CreateNotificationInput {
+  userId: string | 'all';
+  recipientUserId?: string;
+  schoolId?: string;
+  schoolName?: string;
+  title: string;
+  message: string;
+  type?: NotificationType;
+  pollOptions?: string[];
+  pollId?: string;
+  metadata?: {
+    transactionId?: string;
+    transactionNumber?: string;
+    amount?: number;
+    creditAmount?: number;
+    creditsAwarded?: number;
+    newBalance?: number;
+    previousBalance?: number;
+    updatedBy?: string;
+    reason?: string;
+    link?: string;
+  };
+  actionUrl?: string;
+}
+
+// In-Memory store for fast, reliable access, offline fallback, and test stability
+const notificationsStore: Map<string, AppNotification> = new Map();
+
+// Helper to sanitize payload for Firestore
+function cleanForFirestore(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (Array.isArray(obj)) return obj.map(cleanForFirestore);
+  if (typeof obj === 'object') {
+    const cleaned: any = {};
+    for (const key in obj) {
+      if (obj[key] !== undefined) {
+        cleaned[key] = cleanForFirestore(obj[key]);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
+export const NotificationService = {
+  /**
+   * Create a new notification. Persists in-memory and attempts Firestore write.
+   */
+  async createNotification(input: CreateNotificationInput): Promise<AppNotification> {
+    if (!input.title || !input.title.trim()) {
+      throw new Error('Notification title is required');
+    }
+    if (!input.message || !input.message.trim()) {
+      throw new Error('Notification message is required');
+    }
+
+    const id = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const now = new Date().toISOString();
+
+    const notification: AppNotification = {
+      id,
+      userId: input.userId || 'all',
+      recipientUserId: input.recipientUserId || (input.userId !== 'all' ? input.userId : undefined),
+      schoolId: input.schoolId,
+      schoolName: input.schoolName,
+      title: input.title.trim(),
+      message: input.message.trim(),
+      isRead: false,
+      createdAt: now,
+      type: input.type || 'info',
+      metadata: input.metadata,
+      actionUrl: input.actionUrl,
+      pollOptions: input.pollOptions,
+      pollId: input.pollId,
+    };
+
+    // Store in-memory
+    notificationsStore.set(id, notification);
+
+    // Persist to Firestore asynchronously (fire-and-forget / non-blocking)
+    try {
+      if (typeof window !== 'undefined' && db) {
+        const notifRef = doc(db, 'notifications', id);
+        setDoc(notifRef, cleanForFirestore(notification)).catch(err => {
+          console.debug('Firestore notification save fallback handled:', err);
+        });
+      }
+    } catch (err) {
+      console.debug('Firestore notification save error handled:', err);
+    }
+
+    return notification;
+  },
+
+  /**
+   * Trigger: Payment Verified & Credits Credited
+   */
+  async notifyPaymentVerified(params: {
+    userId: string;
+    transactionId: string;
+    transactionNumber?: string;
+    amount: number;
+    creditsAwarded: number;
+    newBalance: number;
+  }): Promise<AppNotification> {
+    const refCode = params.transactionNumber || params.transactionId;
+    return this.createNotification({
+      userId: params.userId,
+      type: 'payment_verified',
+      title: 'Payment Verified & Credits Added',
+      message: `Your payment of KES ${params.amount} (Ref: ${refCode}) has been verified. +${params.creditsAwarded} credits have been added to your account. Current balance: ${params.newBalance} credits.`,
+      metadata: {
+        transactionId: params.transactionId,
+        transactionNumber: refCode,
+        amount: params.amount,
+        creditsAwarded: params.creditsAwarded,
+        newBalance: params.newBalance,
+      },
+    });
+  },
+
+  /**
+   * Trigger: Payment Declined / Transaction Status Update
+   */
+  async notifyTransactionStatus(params: {
+    userId: string;
+    transactionId: string;
+    transactionNumber?: string;
+    amount: number;
+    status: 'VERIFIED' | 'REJECTED' | 'PENDING';
+    reason?: string;
+  }): Promise<AppNotification> {
+    const refCode = params.transactionNumber || params.transactionId;
+    const isVerified = params.status === 'VERIFIED';
+    return this.createNotification({
+      userId: params.userId,
+      type: isVerified ? 'payment_verified' : 'transaction_status',
+      title: isVerified ? 'Payment Verified' : 'Payment Verification Update',
+      message: isVerified
+        ? `Your transaction (Ref: ${refCode}) for KES ${params.amount} has been verified.`
+        : `Your payment claim of KES ${params.amount} (Ref: ${refCode}) could not be verified. ${params.reason || 'Please verify the M-Pesa transaction code or contact Exameno support.'}`,
+      metadata: {
+        transactionId: params.transactionId,
+        transactionNumber: refCode,
+        amount: params.amount,
+        reason: params.reason,
+      },
+    });
+  },
+
+  /**
+   * Trigger: Manual or Policy Credit Adjustment
+   */
+  async notifyCreditAdjustment(params: {
+    userId: string;
+    delta: number;
+    newBalance: number;
+    adminName?: string;
+    reason?: string;
+  }): Promise<AppNotification> {
+    const isAddition = params.delta > 0;
+    const sign = isAddition ? `+${params.delta}` : `${params.delta}`;
+    return this.createNotification({
+      userId: params.userId,
+      type: 'credit_change',
+      title: isAddition ? 'Credits Added to Your Account' : 'Credit Balance Adjusted',
+      message: `${sign} credits were adjusted by ${params.adminName || 'System'}. Your current credit balance is ${params.newBalance} credits.`,
+      metadata: {
+        creditAmount: params.delta,
+        newBalance: params.newBalance,
+        updatedBy: params.adminName || 'Administrator',
+        reason: params.reason,
+      },
+    });
+  },
+
+  /**
+   * Trigger: School-Wide Announcement (Multi-tenant isolated)
+   */
+  async notifySchoolAnnouncement(params: {
+    schoolId: string;
+    schoolName: string;
+    title: string;
+    message: string;
+    senderName?: string;
+  }): Promise<AppNotification> {
+    return this.createNotification({
+      userId: 'all',
+      schoolId: params.schoolId,
+      schoolName: params.schoolName,
+      type: 'announcement',
+      title: params.title,
+      message: params.message,
+      metadata: {
+        updatedBy: params.senderName,
+      },
+    });
+  },
+
+  /**
+   * Trigger: System Broadcast Alert
+   */
+  async notifySystemAlert(params: {
+    title: string;
+    message: string;
+  }): Promise<AppNotification> {
+    return this.createNotification({
+      userId: 'all',
+      type: 'system_alert',
+      title: params.title,
+      message: params.message,
+    });
+  },
+
+  /**
+   * Trigger: Account Information Update
+   */
+  async notifyAccountUpdate(params: {
+    userId: string;
+    title: string;
+    message: string;
+  }): Promise<AppNotification> {
+    return this.createNotification({
+      userId: params.userId,
+      type: 'account_update',
+      title: params.title,
+      message: params.message,
+    });
+  },
+
+  /**
+   * Get all notifications visible to a specific user (enforcing multi-tenant isolation)
+   */
+  getNotificationsForUser(userId: string, schoolId?: string): AppNotification[] {
+    const list: AppNotification[] = [];
+
+    for (const notif of notificationsStore.values()) {
+      // 1. Direct user notification
+      const isDirect = notif.userId === userId || notif.recipientUserId === userId;
+
+      // 2. School-wide announcement (only visible to members of that school)
+      const isSchoolMatch = notif.schoolId && schoolId && notif.schoolId === schoolId;
+
+      // 3. Platform broadcast (only if not restricted to a specific other school)
+      const isGlobalBroadcast = notif.userId === 'all' && (!notif.schoolId || notif.schoolId === schoolId);
+
+      if (isDirect || isSchoolMatch || isGlobalBroadcast) {
+        list.push(notif);
+      }
+    }
+
+    // Sort descending by date
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  /**
+   * Get unread notifications count for a user
+   */
+  getUnreadCount(userId: string, schoolId?: string): number {
+    return this.getNotificationsForUser(userId, schoolId).filter(n => !n.isRead).length;
+  },
+
+  /**
+   * Mark a single notification as read
+   */
+  async markAsRead(notificationId: string): Promise<void> {
+    const notif = notificationsStore.get(notificationId);
+    if (notif) {
+      notif.isRead = true;
+      notif.readAt = new Date().toISOString();
+      notificationsStore.set(notificationId, notif);
+    }
+
+    try {
+      if (typeof window !== 'undefined' && db) {
+        const notifRef = doc(db, 'notifications', notificationId);
+        updateDoc(notifRef, { isRead: true, readAt: new Date().toISOString() }).catch(err => {
+          console.debug('Firestore markAsRead fallback:', err);
+        });
+      }
+    } catch (err) {
+      console.debug('Firestore markAsRead error:', err);
+    }
+  },
+
+  /**
+   * Mark all notifications as read for a user
+   */
+  async markAllAsRead(userId: string, schoolId?: string): Promise<void> {
+    const userNotifs = this.getNotificationsForUser(userId, schoolId);
+    const now = new Date().toISOString();
+
+    for (const notif of userNotifs) {
+      notif.isRead = true;
+      notif.readAt = now;
+      notificationsStore.set(notif.id, notif);
+    }
+
+    try {
+      if (typeof window !== 'undefined' && db && userNotifs.length > 0) {
+        const batch = writeBatch(db);
+        userNotifs.slice(0, 50).forEach(n => {
+          const notifRef = doc(db, 'notifications', n.id);
+          batch.update(notifRef, { isRead: true, readAt: now });
+        });
+        batch.commit().catch(err => console.debug('Firestore batch mark read notice:', err));
+      }
+    } catch (err) {
+      console.debug('Firestore markAllAsRead error:', err);
+    }
+  },
+
+  /**
+   * Delete a notification
+   */
+  async deleteNotification(notificationId: string): Promise<void> {
+    notificationsStore.delete(notificationId);
+
+    try {
+      if (typeof window !== 'undefined' && db) {
+        const notifRef = doc(db, 'notifications', notificationId);
+        deleteDoc(notifRef).catch(err => console.debug('Firestore delete notification notice:', err));
+      }
+    } catch (err) {
+      console.debug('Firestore deleteNotification error:', err);
+    }
+  },
+
+  /**
+   * Ingest initial notifications (e.g. from Firestore query)
+   */
+  ingestNotifications(items: AppNotification[]): void {
+    for (const item of items) {
+      notificationsStore.set(item.id, item);
+    }
+  },
+
+  /**
+   * Admin inspection of all system notifications
+   */
+  getAllNotificationsForAdmin(): AppNotification[] {
+    return Array.from(notificationsStore.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  },
+
+  /**
+   * Clear in-memory store (for test resets)
+   */
+  clearStore(): void {
+    notificationsStore.clear();
+  },
+};

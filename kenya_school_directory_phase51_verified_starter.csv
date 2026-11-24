@@ -1,0 +1,49 @@
+schoolName,county,subCounty,nemisCode,knecCode,moeRegistrationNumber,officialSchoolCode,schoolType,educationLevel,institutionCategory,ownership,kpsea,kjsea
+Mombasa Primary School,Mombasa,Mvita,NEMIS-MBS01,KNEC-01101,MOE/REG/MBS/001,MBS-001,Primary,Primary,Public,Government,true,false
+Kwale High School,Kwale,Matuga,NEMIS-KWL02,KNEC-02102,MOE/REG/KWL/002,KWL-002,Secondary,Secondary,Public,Government,false,true
+Bahari Girls Secondary School,Kilifi,Malindi,NEMIS-KLF03,KNEC-03103,MOE/REG/KLF/003,KLF-003,Secondary,Secondary,Public,Government,true,true
+Lizzie Wanyoike Preparatory School,Kiambu,Kabete,NEMIS-LWPS01,KNEC-27101,MOE/REG/KMB/101,LWPS-001,Primary,Primary,Private,Private,true,false
+Alliance High School,Kiambu,Kikuyu,NEMIS-AHS03,KNEC-27103,MOE/REG/KMB/103,KMB-203,Secondary,Secondary,Public,Government,false,true
+Alliance Girls High School,Kiambu,Kikuyu,NEMIS-AGHS04,KNEC-27104,MOE/REG/KMB/104,KMB-204,Secondary,Secondary,Public,Government,false,true
+Mangu High School,Kiambu,Juja,NEMIS-MNG05,KNEC-27105,MOE/REG/KMB/105,KMB-205,Secondary,Secondary,Public,Government,false,true
+Maseno School,Kisumu,Kisumu West,NEMIS-MSN06,KNEC-42106,MOE/REG/KSM/106,KSM-206,Secondary,Secondary,Public,Government,false,true
+Starehe Boys' Centre,Nairobi City,Starehe,NEMIS-SBC07,KNEC-47107,MOE/REG/NRB/107,NRB-207,Secondary,Secondary,Public,Government,false,true
+Nairobi Primary School,Nairobi City,Westlands,NEMIS-NPS08,KNEC-47108,MOE/REG/NRB/108,NRB-208,Primary,Primary,Public,Government,true,false
+Kapsabet Boys High School,Nandi,Emgwen,NEMIS-KBP09,KNEC-29109,MOE/REG/NDI/109,NDI-209,Secondary,Secondary,Public,Government,false,true
+Maranda High School,Siaya,Bondo,NEMIS-MRD10,KNEC-41110,MOE/REG/SIA/110,SIA-210,Secondary,Secondary,Public,Government,false,true
+Asumbi Girls High School,Homa Bay,Rangwe,NEMIS-ASB11,KNEC-43111,MOE/REG/HBY/111,HBY-211,Secondary,Secondary,Public,Government,false,true
+Kakamega High School,Kakamega,Lurambi,NEMIS-KKM12,KNEC-37112,MOE/REG/KKM/112,KKM-212,Secondary,Secondary,Public,Government,false,true
+Kagumo High School,Nyeri,Nyeri Town,NEMIS-KGM13,KNEC-19113,MOE/REG/NYR/113,NYR-213,Secondary,Secondary,Public,Government,false,true
+Lenana School,Nairobi City,Dagoretti,NEMIS-LNS14,KNEC-47114,MOE/REG/NRB/114,NRB-214,Secondary,Secondary,Public,Government,false,true
+Pangani Girls High School,Nairobi City,Starehe,NEMIS-PGS15,KNEC-47115,MOE/REG/NRB/115,NRB-215,Secondary,Secondary,Public,Government,false,true
+Kenya High School,Nairobi City,Kibra,NEMIS-KHS01,KNEC-47102,MOE/REG/NRB/102,NRB-201,Secondary,Secondary,Public,Government,false,true
+Nairobi Academy,Nairobi City,Westlands,NEMIS-NAC02,KNEC-47103,MOE/REG/NRB/103,NRB-202,Primary,Primary,Private,Private,true,false
+Hola Secondary School,Tana River,Hola,NEMIS-TNR04,KNEC-04104,MOE/REG/TNR/004,TNR-004,Secondary,Secondary,Public,Government,false,true
+Lamu Girls Secondary School,Lamu,Lamu West,NEMIS-LMU05,KNEC-05105,MOE/REG/LMU/005,LMU-005,Secondary,Secondary,Public,Government,false,true
+Murray High School,Taita-Taveta,Wundanyi,NEMIS-TTV06,KNEC-06106,MOE/REG/TTV/006,TTV-006,Secondary,Secondary,Public,Government,false,true
+Garissa High School,Garissa,Garissa Township,NEMIS-GRS07,KNEC-07107,MOE/REG/GRS/007,GRS-007,Secondary,Secondary,Public,Government,false,true
+Wajir High School,Wajir,Wajir East,NEMIS-WJR08,KNEC-08108,MOE/REG/WJR/008,WJR-008,Secondary,Secondary,Public,Government,false,true
+Mandera Secondary School,Mandera,Mandera East,NEMIS-MDR09,KNEC-09109,MOE/REG/MDR/009,MDR-009,Secondary,Secondary,Public,Government,false,true
+Marsabit Boys Secondary School,Marsabit,Saku,NEMIS-MBT10,KNEC-10110,MOE/REG/MBT/010,MBT-010,Secondary,Secondary,Public,Government,false,true
+Isiolo Girls High School,Isiolo,Isiolo Township,NEMIS-ISL11,KNEC-11111,MOE/REG/ISL/011,ISL-011,Secondary,Secondary,Public,Government,false,true
+Meru School,Meru,Imenti South,NEMIS-MER12,KNEC-12112,MOE/REG/MER/012,MER-012,Secondary,Secondary,Public,Government,false,true
+Chuka High School,Tharaka-Nithi,Chuka,NEMIS-TKN13,KNEC-13113,MOE/REG/TKN/013,TKN-013,Secondary,Secondary,Public,Government,false,true
+Kangaru School,Embu,Manyatta,NEMIS-EMB14,KNEC-14114,MOE/REG/EMB/014,EMB-014,Secondary,Secondary,Public,Government,false,true
+Kitui High School,Kitui,Kitui Central,NEMIS-KIT15,KNEC-15115,MOE/REG/KIT/015,KIT-015,Secondary,Secondary,Public,Government,false,true
+Machakos School,Machakos,Machakos Town,NEMIS-MCK16,KNEC-16116,MOE/REG/MCK/016,MCK-016,Secondary,Secondary,Public,Government,false,true
+Makueni Boys High School,Makueni,Kibwezi West,NEMIS-MKN17,KNEC-17117,MOE/REG/MKN/017,MKN-017,Secondary,Secondary,Public,Government,false,true
+Nyahururu High School,Nyandarua,Ol Kalou,NEMIS-NYD18,KNEC-18118,MOE/REG/NYD/018,NYD-018,Secondary,Secondary,Public,Government,false,true
+Baricho High School,Kirinyaga,Kirinyaga Central,NEMIS-KRG20,KNEC-20120,MOE/REG/KRG/020,KRG-020,Secondary,Secondary,Public,Government,false,true
+Murang'a High School,Murang'a,Kiharu,NEMIS-MRG21,KNEC-21121,MOE/REG/MRG/021,MRG-021,Secondary,Secondary,Public,Government,false,true
+Lodwar High School,Turkana,Lodwar,NEMIS-TRK23,KNEC-23123,MOE/REG/TRK/023,TRK-023,Secondary,Secondary,Public,Government,false,true
+Kapenguria Boys High School,West Pokot,Kapenguria,NEMIS-WPK24,KNEC-24124,MOE/REG/WPK/024,WPK-024,Secondary,Secondary,Public,Government,false,true
+Maralal High School,Samburu,Samburu West,NEMIS-SMR25,KNEC-25125,MOE/REG/SMR/025,SMR-025,Secondary,Secondary,Public,Government,false,true
+St. Brigids Kiminini,Trans Nzoia,Kiminini,NEMIS-TNZ26,KNEC-26126,MOE/REG/TNZ/026,TNZ-026,Secondary,Secondary,Public,Government,false,true
+Sing'ore Girls High School,Elgeyo-Marakwet,Keiyo North,NEMIS-EMW28,KNEC-28128,MOE/REG/EMW/028,EMW-028,Secondary,Secondary,Public,Government,false,true
+Tenwek High School,Bomet,Bomet Central,NEMIS-BMT36,KNEC-36136,MOE/REG/BMT/036,BMT-036,Secondary,Secondary,Public,Government,false,true
+Laiser Hill Academy,Kajiado,Kajiado North,NEMIS-KJD34,KNEC-34134,MOE/REG/KJD/034,KJD-034,Secondary,Secondary,Private,Private,false,true
+Kericho Boys High School,Kericho,Belgut,NEMIS-KRC35,KNEC-35135,MOE/REG/KRC/035,KRC-035,Secondary,Secondary,Public,Government,false,true
+Friends School Kamusinga,Bungoma,Kimilili,NEMIS-BGM39,KNEC-39139,MOE/REG/BGM/039,BGM-039,Secondary,Secondary,Public,Government,false,true
+Butula Boys High School,Busia,Nambale,NEMIS-BSA40,KNEC-40140,MOE/REG/BSA/040,BSA-040,Secondary,Secondary,Public,Government,false,true
+Kisii School,Kisii,Kitutu Chache,NEMIS-KSI45,KNEC-45145,MOE/REG/KSI/045,KSI-045,Secondary,Secondary,Public,Government,false,true
+Nyamira Boys High School,Nyamira,Nyamira Town,NEMIS-NYM46,KNEC-46146,MOE/REG/NYM/046,NYM-046,Secondary,Secondary,Public,Government,false,true

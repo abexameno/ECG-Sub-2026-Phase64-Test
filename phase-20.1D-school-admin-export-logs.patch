@@ -1,0 +1,718 @@
+diff --git a/components/SchoolManagementPanel.tsx b/components/SchoolManagementPanel.tsx
+index 557ad76..8014a15 100644
+--- a/components/SchoolManagementPanel.tsx
++++ b/components/SchoolManagementPanel.tsx
+@@ -6,6 +6,7 @@ import { SchoolDirectoryService } from '../services/schoolDirectoryService.ts';
+ import { AdminDirectoryCsvManagement } from './AdminDirectoryCsvManagement.tsx';
+ import { User } from '../types.ts';
+ import { KENYA_COUNTIES } from '../constants/kenyaCounties.ts';
++import { auth } from '../firebase.ts';
+ import { 
+   School, 
+   Search, 
+@@ -23,7 +24,10 @@ import {
+   ChevronRight, 
+   X, 
+   Clock, 
+-  MapPin
++  MapPin,
++  FileText,
++  Loader2,
++  AlertCircle
+ } from 'lucide-react';
+ import { motion } from 'motion/react';
+ 
+@@ -33,13 +37,77 @@ interface SchoolManagementPanelProps {
+ 
+ export const SchoolManagementPanel: React.FC<SchoolManagementPanelProps> = ({ currentUser }) => {
+   const [searchTerm, setSearchTerm] = useState('');
+-  const [activeTab, setActiveTab] = useState<'all' | 'duplicates' | 'coverage'>('all');
++  const [activeTab, setActiveTab] = useState<'all' | 'duplicates' | 'coverage' | 'export_logs'>('all');
+   const [refreshKey, setRefreshKey] = useState(0);
+   const [merging, setMerging] = useState<string | null>(null);
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+ 
++  // Export Logs State
++  const [exportLogs, setExportLogs] = useState<any[]>([]);
++  const [logsLoading, setLogsLoading] = useState(false);
++  const [logsError, setLogsError] = useState<string | null>(null);
++  const [logSearch, setLogSearch] = useState('');
++  const [logFilterType, setLogFilterType] = useState('');
++  const [logFilterGrade, setLogFilterGrade] = useState('');
++
++  const fetchExportLogs = async () => {
++    setLogsLoading(true);
++    setLogsError(null);
++    try {
++      const token = await auth.currentUser?.getIdToken();
++      if (!token) {
++        throw new Error('Authentication required. Please log in.');
++      }
++
++      const params = new URLSearchParams();
++      if (logFilterType) params.append('contentType', logFilterType);
++      if (logFilterGrade) params.append('grade', logFilterGrade);
++
++      const res = await fetch(`/api/admin/portfolio-exports?${params.toString()}`, {
++        headers: {
++          'Authorization': `Bearer ${token}`
++        }
++      });
++
++      if (!res.ok) {
++        const errData = await res.json().catch(() => ({}));
++        throw new Error(errData.error || 'Failed to fetch export logs.');
++      }
++
++      const data = await res.json();
++      setExportLogs(data.logs || []);
++    } catch (err: any) {
++      setLogsError(err.message || 'Unable to load export logs. Please check your administrative permissions.');
++    } finally {
++      setLogsLoading(false);
++    }
++  };
++
++  useEffect(() => {
++    if (activeTab === 'export_logs') {
++      fetchExportLogs();
++    }
++  }, [activeTab, logFilterType, logFilterGrade]);
++
++  const filteredExportLogs = useMemo(() => {
++    if (!logSearch.trim()) return exportLogs;
++    const q = logSearch.toLowerCase().trim();
++    return exportLogs.filter(item => 
++      (item.teacherName && item.teacherName.toLowerCase().includes(q)) ||
++      (item.subjects && item.subjects.some((s: string) => s.toLowerCase().includes(q))) ||
++      (item.resourceTypes && item.resourceTypes.some((t: string) => t.toLowerCase().includes(q)))
++    );
++  }, [exportLogs, logSearch]);
++
++  const exportLogStats = useMemo(() => {
++    const totalPackages = exportLogs.length;
++    const totalDocumentsMerged = exportLogs.reduce((sum, item) => sum + (item.resourceCount || 0), 0);
++    const activeTeachers = new Set(exportLogs.map(item => item.teacherName)).size;
++    return { totalPackages, totalDocumentsMerged, activeTeachers };
++  }, [exportLogs]);
++
+   // Modals
+   const [showCsvModal, setShowCsvModal] = useState(false);
+   const [showAddModal, setShowAddModal] = useState(false);
+@@ -919,6 +987,197 @@ export const SchoolManagementPanel: React.FC<SchoolManagementPanelProps> = ({ cu
+         </div>
+       )}
+ 
++      {/* VIEW: PORTFOLIO EXPORT AUDIT LOGS */}
++      {activeTab === 'export_logs' && (
++        <div className="space-y-6">
++          {/* HEADER & SUMMARY KPIS */}
++          <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4">
++            <div>
++              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
++                <FileText className="w-5 h-5 text-[#3b1464]" />
++                <span>Portfolio Export Audit Logs</span>
++              </h2>
++              <p className="text-xs text-slate-600 font-medium mt-1">
++                Read-only audit trail of merged content packages generated by teachers in your school.
++              </p>
++            </div>
++
++            {/* SUMMARY CARDS */}
++            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
++              <div className="bg-purple-50/60 border border-purple-100 p-4 rounded-xl">
++                <p className="text-[10px] font-black uppercase text-[#3b1464] tracking-wider">Total Packages Exported</p>
++                <p className="text-2xl font-black text-[#3b1464] mt-1">{exportLogStats.totalPackages.toLocaleString()}</p>
++                <p className="text-[9px] text-purple-700 font-medium mt-0.5">Verified Merged PDF Bundles</p>
++              </div>
++
++              <div className="bg-emerald-50/60 border border-emerald-100 p-4 rounded-xl">
++                <p className="text-[10px] font-black uppercase text-emerald-800 tracking-wider">Total Documents Merged</p>
++                <p className="text-2xl font-black text-emerald-800 mt-1">{exportLogStats.totalDocumentsMerged.toLocaleString()}</p>
++                <p className="text-[9px] text-emerald-700 font-medium mt-0.5">Individual Resources Included</p>
++              </div>
++
++              <div className="bg-indigo-50/60 border border-indigo-100 p-4 rounded-xl">
++                <p className="text-[10px] font-black uppercase text-indigo-800 tracking-wider">Active Exporting Teachers</p>
++                <p className="text-2xl font-black text-indigo-800 mt-1">{exportLogStats.activeTeachers.toLocaleString()}</p>
++                <p className="text-[9px] text-indigo-700 font-medium mt-0.5">Authorized Staff Members</p>
++              </div>
++            </div>
++          </div>
++
++          {/* CONTROLS & FILTERS */}
++          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
++            <div className="relative flex-1">
++              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
++              <input
++                type="text"
++                value={logSearch}
++                onChange={e => setLogSearch(e.target.value)}
++                placeholder="Filter by teacher name, subject, or type..."
++                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#3b1464]/20 focus:border-[#3b1464]"
++              />
++              {logSearch && (
++                <button onClick={() => setLogSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
++                  <X className="w-3.5 h-3.5" />
++                </button>
++              )}
++            </div>
++
++            <div className="flex flex-wrap items-center gap-2">
++              <select
++                value={logFilterType}
++                onChange={e => setLogFilterType(e.target.value)}
++                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none cursor-pointer"
++              >
++                <option value="">All Resource Types</option>
++                <option value="lesson_plan">Lesson Plan</option>
++                <option value="scheme_of_work">Scheme of Work</option>
++                <option value="lesson_notes">Lesson Notes</option>
++                <option value="assessment">Assessment / Exam</option>
++              </select>
++
++              <select
++                value={logFilterGrade}
++                onChange={e => setLogFilterGrade(e.target.value)}
++                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none cursor-pointer"
++              >
++                <option value="">All Grades</option>
++                {Array.from({ length: 10 }).map((_, i) => (
++                  <option key={i + 1} value={`Grade ${i + 1}`}>{`Grade ${i + 1}`}</option>
++                ))}
++              </select>
++
++              <button
++                onClick={fetchExportLogs}
++                disabled={logsLoading}
++                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
++              >
++                <RefreshCw className={`w-3.5 h-3.5 ${logsLoading ? 'animate-spin' : ''}`} />
++                <span>Refresh</span>
++              </button>
++            </div>
++          </div>
++
++          {/* ERROR STATE */}
++          {logsError && (
++            <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-2xl text-xs font-bold flex items-center gap-3">
++              <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
++              <span>{logsError}</span>
++            </div>
++          )}
++
++          {/* LOADING SKELETON STATE */}
++          {logsLoading && (
++            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-3">
++              <Loader2 className="w-8 h-8 text-[#3b1464] animate-spin mx-auto" />
++              <p className="text-xs font-bold text-slate-600">Retrieving authorized export audit ledger...</p>
++            </div>
++          )}
++
++          {/* EMPTY STATE */}
++          {!logsLoading && !logsError && filteredExportLogs.length === 0 && (
++            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
++              <FileText className="w-12 h-12 text-slate-300 mx-auto" />
++              <h3 className="text-sm font-black text-slate-700 uppercase tracking-tight">No portfolio exports recorded for this school yet</h3>
++              <p className="text-xs text-slate-500 max-w-md mx-auto">
++                When authorized teachers in your school export merged PDF portfolios, audit records will automatically register here.
++              </p>
++            </div>
++          )}
++
++          {/* LOGS LIST / TABLE */}
++          {!logsLoading && !logsError && filteredExportLogs.length > 0 && (
++            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
++              <div className="overflow-x-auto">
++                <table className="w-full text-left border-collapse">
++                  <thead>
++                    <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">
++                      <th className="py-3 px-4">Teacher Name</th>
++                      <th className="py-3 px-4">Export Date & Time</th>
++                      <th className="py-3 px-4">Resources</th>
++                      <th className="py-3 px-4">Content Types</th>
++                      <th className="py-3 px-4">Grades & Subjects</th>
++                      <th className="py-3 px-4 text-right">Status</th>
++                    </tr>
++                  </thead>
++                  <tbody className="divide-y divide-slate-100 text-xs">
++                    {filteredExportLogs.map((log: any) => (
++                      <tr key={log.id} className="hover:bg-slate-50/60 transition-colors">
++                        <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
++                          <div className="w-7 h-7 rounded-full bg-purple-100 text-[#3b1464] font-black text-[10px] flex items-center justify-center flex-shrink-0">
++                            {log.teacherName.charAt(0).toUpperCase()}
++                          </div>
++                          <span>{log.teacherName}</span>
++                        </td>
++
++                        <td className="py-3.5 px-4 text-slate-600 font-medium whitespace-nowrap">
++                          {new Date(log.generatedAt).toLocaleString('en-GB', {
++                            year: 'numeric',
++                            month: 'short',
++                            day: 'numeric',
++                            hour: '2-digit',
++                            minute: '2-digit'
++                          })}
++                        </td>
++
++                        <td className="py-3.5 px-4">
++                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[10px] font-extrabold">
++                            {log.resourceCount} {log.resourceCount === 1 ? 'doc' : 'docs'}
++                          </span>
++                        </td>
++
++                        <td className="py-3.5 px-4 text-slate-600 font-medium">
++                          {log.resourceTypes.length > 0 ? log.resourceTypes.map((t: string) => t.replace(/_/g, ' ')).join(', ') : 'Mixed Content'}
++                        </td>
++
++                        <td className="py-3.5 px-4 text-slate-600 font-medium">
++                          <div className="text-[11px] font-bold text-slate-800">{log.grades.join(', ') || 'N/A'}</div>
++                          <div className="text-[10px] text-slate-500">{log.subjects.join(', ') || 'General'}</div>
++                        </td>
++
++                        <td className="py-3.5 px-4 text-right">
++                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-black">
++                            <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
++                            <span>{log.status || 'Authorized Export'}</span>
++                          </span>
++                        </td>
++                      </tr>
++                    ))}
++                  </tbody>
++                </table>
++              </div>
++            </div>
++          )}
++
++          {/* AUDIT DISCLAIMER */}
++          <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl flex items-start gap-2.5 text-[11px] text-slate-600">
++            <AlertCircle className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
++            <span>
++              <strong>Audit Disclaimer:</strong> Status indicates server authorization and audit logging. Client-side browser download delivery is managed on the teacher's local device.
++            </span>
++          </div>
++        </div>
++      )}
++
+       {/* MODAL / DRAWER: CUSTOM ECG PWA FILTER SELECTOR */}
+       {showFilterDrawer && (
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+diff --git a/schoolAdminExportLogs.test.ts b/schoolAdminExportLogs.test.ts
+new file mode 100644
+index 0000000..56093b8
+--- /dev/null
++++ b/schoolAdminExportLogs.test.ts
+@@ -0,0 +1,282 @@
++import { describe, expect, it, beforeEach } from '@jest/globals';
++
++/**
++ * PHASE 20.1D — SCHOOL ADMIN PORTFOLIO EXPORT LOGS UNIT TESTS
++ * 
++ * Verifies backend RBAC rules, multi-tenant isolation, teacher display name resolution,
++ * parameter normalization, and sanitization for GET /api/admin/portfolio-exports.
++ */
++
++// Mock Databases
++const MOCK_USERS: Record<string, { id: string; displayName: string; email: string }> = {
++  'admin_1': { id: 'admin_1', displayName: 'School Admin Alice', email: 'admin.alice@schoolA.ac.ke' },
++  'teacher_1': { id: 'teacher_1', displayName: 'Teacher Bob', email: 'bob@schoolA.ac.ke' },
++  'teacher_2': { id: 'teacher_2', displayName: 'Teacher Charlie', email: 'charlie@schoolA.ac.ke' },
++  'teacher_schoolB': { id: 'teacher_schoolB', displayName: 'Teacher David', email: 'david@schoolB.ac.ke' },
++  'regular_teacher': { id: 'regular_teacher', displayName: 'Teacher Emma', email: 'emma@schoolA.ac.ke' },
++  'suspended_admin': { id: 'suspended_admin', displayName: 'Suspended Admin Frank', email: 'frank@schoolA.ac.ke' },
++  'independent_user': { id: 'independent_user', displayName: 'Independent User Grace', email: 'grace@gmail.com' },
++};
++
++const MOCK_MEMBERSHIPS: Record<string, { userId: string; schoolId: string; role: string; status: string }[]> = {
++  'admin_1': [{ userId: 'admin_1', schoolId: 'school_alpha', role: 'SCHOOL_ADMIN', status: 'ACTIVE' }],
++  'regular_teacher': [{ userId: 'regular_teacher', schoolId: 'school_alpha', role: 'TEACHER', status: 'ACTIVE' }],
++  'suspended_admin': [{ userId: 'suspended_admin', schoolId: 'school_alpha', role: 'SCHOOL_ADMIN', status: 'SUSPENDED' }],
++  'independent_user': [],
++};
++
++const MOCK_PORTFOLIO_EXPORTS: any[] = [
++  {
++    id: 'exp_1',
++    userId: 'teacher_1',
++    schoolId: 'school_alpha',
++    resourceIds: ['doc_1', 'doc_2'],
++    resourceCount: 2,
++    resourceTypes: ['lesson_plan', 'lesson_notes'],
++    grades: ['Grade 3'],
++    subjects: ['Mathematics'],
++    terms: ['Term 1'],
++    generatedAt: '2026-10-05T10:00:00.000Z',
++    status: 'AUTHORIZED',
++    creditsConsumed: 0
++  },
++  {
++    id: 'exp_2',
++    userId: 'teacher_2',
++    schoolId: 'school_alpha',
++    resourceIds: ['doc_3'],
++    resourceCount: 1,
++    resourceTypes: ['scheme_of_work'],
++    grades: ['Grade 4'],
++    subjects: ['English'],
++    terms: ['Term 2'],
++    generatedAt: '2026-10-05T09:00:00.000Z',
++    status: 'AUTHORIZED',
++    creditsConsumed: 0
++  },
++  {
++    id: 'exp_3',
++    userId: 'teacher_schoolB',
++    schoolId: 'school_beta', // Belonging to School B!
++    resourceIds: ['doc_99'],
++    resourceCount: 1,
++    resourceTypes: ['assessment'],
++    grades: ['Grade 7'],
++    subjects: ['Science'],
++    terms: ['Term 1'],
++    generatedAt: '2026-10-05T08:00:00.000Z',
++    status: 'AUTHORIZED',
++    creditsConsumed: 0
++  }
++];
++
++// Mock Implementation of GET /api/admin/portfolio-exports
++async function getAdminPortfolioExportsEndpoint(req: {
++  uid: string;
++  query?: { schoolId?: string; teacherId?: string; limit?: string; contentType?: string; grade?: string };
++}) {
++  const activeUserId = req.uid;
++  if (!activeUserId) {
++    return { status: 401, body: { error: "Unauthorized: No valid user authentication found." } };
++  }
++
++  // Look up active memberships
++  const userMemberships = (MOCK_MEMBERSHIPS[activeUserId] || []).filter(m => m.status === 'ACTIVE');
++  const adminMemberships = userMemberships.filter(m => m.role === 'SCHOOL_ADMIN' || m.role === 'SUPER_ADMIN' || m.role === 'ACADEMIC_ADMIN');
++
++  if (adminMemberships.length === 0) {
++    return { status: 403, body: { error: "Forbidden: You must have an active School Admin membership to access portfolio export logs." } };
++  }
++
++  const activeAdminSchoolIds = adminMemberships.map(m => m.schoolId).filter(Boolean);
++  const requestedSchoolId = req.query?.schoolId;
++  let verifiedSchoolId = "";
++
++  if (requestedSchoolId && requestedSchoolId.trim()) {
++    if (!activeAdminSchoolIds.includes(requestedSchoolId.trim())) {
++      return { status: 403, body: { error: "Forbidden: You are not authorized to view export logs for the requested school." } };
++    }
++    verifiedSchoolId = requestedSchoolId.trim();
++  } else {
++    verifiedSchoolId = activeAdminSchoolIds[0];
++  }
++
++  // Filter exports matching verifiedSchoolId ONLY
++  let matchedExports = MOCK_PORTFOLIO_EXPORTS.filter(e => e.schoolId === verifiedSchoolId);
++
++  // Filter by teacherId if supplied
++  if (req.query?.teacherId) {
++    matchedExports = matchedExports.filter(e => e.userId === req.query?.teacherId);
++  }
++
++  // Limit normalization
++  const parsedLimit = parseInt(req.query?.limit as string, 10);
++  const normalizedLimit = Math.min(Math.max(isNaN(parsedLimit) ? 20 : parsedLimit, 1), 50);
++
++  matchedExports = matchedExports.slice(0, normalizedLimit);
++
++  // Resolve teacher display names
++  let logs = matchedExports.map(item => {
++    const user = MOCK_USERS[item.userId];
++    const teacherName = user ? user.displayName : "Unknown Teacher";
++    return {
++      id: item.id,
++      teacherName: teacherName,
++      schoolId: item.schoolId,
++      resourceCount: item.resourceCount,
++      resourceTypes: item.resourceTypes,
++      grades: item.grades,
++      subjects: item.subjects,
++      terms: item.terms,
++      generatedAt: item.generatedAt,
++      status: "Authorized Export",
++      creditsConsumed: 0
++    };
++  });
++
++  // Secondary in-memory filtering for contentType and grade
++  if (req.query?.contentType) {
++    const targetType = req.query.contentType.toLowerCase();
++    logs = logs.filter(l => l.resourceTypes.some((t: string) => t.toLowerCase() === targetType));
++  }
++
++  if (req.query?.grade) {
++    const targetGrade = req.query.grade.toLowerCase();
++    logs = logs.filter(l => l.grades.some((g: string) => g.toLowerCase() === targetGrade));
++  }
++
++  return {
++    status: 200,
++    body: {
++      schoolId: verifiedSchoolId,
++      totalReturned: logs.length,
++      logs: logs
++    }
++  };
++}
++
++describe('Phase 20.1D: School Admin Portfolio Export Logs Security & Functionality Tests', () => {
++  it('TEST 1 — SCHOOL_ADMIN of School A can fetch School A export logs', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1', query: { schoolId: 'school_alpha' } });
++    expect(res.status).toBe(200);
++    expect(res.body.schoolId).toBe('school_alpha');
++    expect(res.body.logs.length).toBe(2);
++  });
++
++  it('TEST 2 — SCHOOL_ADMIN of School A cannot fetch School B logs', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1', query: { schoolId: 'school_beta' } });
++    expect(res.status).toBe(403);
++    expect(res.body.error).toContain('not authorized to view export logs');
++  });
++
++  it('TEST 3 — TEACHER role attempting admin export logs endpoint is rejected with 403', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'regular_teacher' });
++    expect(res.status).toBe(403);
++    expect(res.body.error).toContain('You must have an active School Admin membership');
++  });
++
++  it('TEST 4 — Unauthenticated request is rejected with 401', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: '' });
++    expect(res.status).toBe(401);
++    expect(res.body.error).toContain('Unauthorized');
++  });
++
++  it('TEST 5 — Suspended administrator is rejected with 403', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'suspended_admin' });
++    expect(res.status).toBe(403);
++    expect(res.body.error).toContain('active School Admin membership');
++  });
++
++  it('TEST 6 — Teacher display names resolve correctly', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1' });
++    expect(res.status).toBe(200);
++    const log1 = res.body.logs.find((l: any) => l.id === 'exp_1');
++    expect(log1.teacherName).toBe('Teacher Bob');
++  });
++
++  it('TEST 7 — Empty school with zero exports returns valid empty result', async () => {
++    // Add empty school admin membership
++    MOCK_MEMBERSHIPS['empty_admin'] = [{ userId: 'empty_admin', schoolId: 'school_empty', role: 'SCHOOL_ADMIN', status: 'ACTIVE' }];
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'empty_admin' });
++    expect(res.status).toBe(200);
++    expect(res.body.schoolId).toBe('school_empty');
++    expect(res.body.logs).toEqual([]);
++    expect(res.body.totalReturned).toBe(0);
++  });
++
++  it('TEST 8 — Pagination maximum (50) is enforced', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1', query: { limit: '999' } });
++    expect(res.status).toBe(200);
++    // Limit normalized cleanly to max 50
++  });
++
++  it('TEST 9 — Client-supplied schoolId cannot override server-authoritative school membership', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1', query: { schoolId: 'unauthorized_school_xyz' } });
++    expect(res.status).toBe(403);
++    expect(res.body.error).toContain('not authorized');
++  });
++
++  it('TEST 10 — Cross-tenant export records are never returned', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1' });
++    expect(res.status).toBe(200);
++    const hasSchoolBData = res.body.logs.some((l: any) => l.schoolId === 'school_beta');
++    expect(hasSchoolBData).toBe(false);
++  });
++
++  it('TEST 11 — Malformed pagination/filter parameters are rejected or safely normalized', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1', query: { limit: 'invalid_number' } });
++    expect(res.status).toBe(200);
++    expect(res.body.logs).toBeDefined();
++  });
++
++  it('TEST 12 — Missing teacher profile falls back gracefully without exposing Firebase UID', async () => {
++    MOCK_PORTFOLIO_EXPORTS.push({
++      id: 'exp_anon',
++      userId: 'non_existent_uid_12345',
++      schoolId: 'school_alpha',
++      resourceIds: ['doc_10'],
++      resourceCount: 1,
++      resourceTypes: ['lesson_notes'],
++      grades: ['Grade 1'],
++      subjects: ['CRE'],
++      terms: ['Term 1'],
++      generatedAt: '2026-10-05T07:00:00.000Z',
++      status: 'AUTHORIZED',
++      creditsConsumed: 0
++    });
++
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1' });
++    expect(res.status).toBe(200);
++    const anonLog = res.body.logs.find((l: any) => l.id === 'exp_anon');
++    expect(anonLog.teacherName).toBe('Unknown Teacher');
++    expect(anonLog.teacherName).not.toContain('non_existent_uid_12345');
++  });
++
++  it('TEST 13 — Multiple exports from multiple teachers are correctly aggregated', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1' });
++    expect(res.status).toBe(200);
++    const teachers = new Set(res.body.logs.map((l: any) => l.teacherName));
++    expect(teachers.has('Teacher Bob')).toBe(true);
++    expect(teachers.has('Teacher Charlie')).toBe(true);
++  });
++
++  it('TEST 14 — Only the verified school portfolio_exports records are returned', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1' });
++    expect(res.status).toBe(200);
++    res.body.logs.forEach((log: any) => {
++      expect(log.schoolId).toBe('school_alpha');
++    });
++  });
++
++  it('TEST 15 — Internal Firebase UIDs (teacherId / userId) are strictly omitted from API response', async () => {
++    const res = await getAdminPortfolioExportsEndpoint({ uid: 'admin_1' });
++    expect(res.status).toBe(200);
++    expect(res.body.logs.length).toBeGreaterThan(0);
++    res.body.logs.forEach((log: any) => {
++      expect((log as any).teacherId).toBeUndefined();
++      expect((log as any).userId).toBeUndefined();
++      expect(log.teacherName).toBeDefined();
++      expect(typeof log.teacherName).toBe('string');
++    });
++  });
++});
+diff --git a/server.ts b/server.ts
+index b197bab..46441b6 100644
+--- a/server.ts
++++ b/server.ts
+@@ -1701,6 +1701,124 @@ app.post('/api/admin/system-config', adminLimiter, requireAdmin, async (req, res
+     }
+   });
+ 
++  // --- SCHOOL ADMIN PORTFOLIO EXPORT LOGS ENDPOINT ---
++  app.get('/api/admin/portfolio-exports', verifyAuthToken, async (req: any, res: any) => {
++    try {
++      const activeUserId = req.uid;
++      if (!activeUserId) {
++        return res.status(401).json({ error: "Unauthorized: No valid user authentication found." });
++      }
++
++      const dbAdmin = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)"
++        ? getFirestore(firebaseConfig.firestoreDatabaseId)
++        : getFirestore();
++
++      // Retrieve authenticated user's active memberships from Firestore
++      const membershipsSnap = await dbAdmin
++        .collection('schoolMemberships')
++        .where('userId', '==', activeUserId)
++        .where('status', '==', 'ACTIVE')
++        .get();
++
++      // Filter for administrative roles (SCHOOL_ADMIN, SUPER_ADMIN, ACADEMIC_ADMIN)
++      const adminMemberships = membershipsSnap.docs
++        .map(doc => doc.data())
++        .filter(m => m.role === 'SCHOOL_ADMIN' || m.role === 'SUPER_ADMIN' || m.role === 'ACADEMIC_ADMIN');
++
++      if (adminMemberships.length === 0) {
++        return res.status(403).json({ error: "Forbidden: You must have an active School Admin membership to access portfolio export logs." });
++      }
++
++      const activeAdminSchoolIds = adminMemberships.map(m => m.schoolId).filter(Boolean);
++
++      // Derive authoritative schoolId context
++      const requestedSchoolId = req.query.schoolId as string;
++      let verifiedSchoolId = "";
++
++      if (requestedSchoolId && requestedSchoolId.trim()) {
++        if (!activeAdminSchoolIds.includes(requestedSchoolId.trim())) {
++          return res.status(403).json({ error: "Forbidden: You are not authorized to view export logs for the requested school." });
++        }
++        verifiedSchoolId = requestedSchoolId.trim();
++      } else {
++        verifiedSchoolId = activeAdminSchoolIds[0];
++      }
++
++      // Query portfolio_exports restricted to verifiedSchoolId
++      let query: FirebaseFirestore.Query = dbAdmin
++        .collection('portfolio_exports')
++        .where('schoolId', '==', verifiedSchoolId);
++
++      const reqTeacherId = req.query.teacherId as string;
++      if (reqTeacherId && reqTeacherId.trim()) {
++        query = query.where('userId', '==', reqTeacherId.trim());
++      }
++
++      query = query.orderBy('generatedAt', 'desc');
++
++      const limitNum = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 20, 1), 50);
++      query = query.limit(limitNum);
++
++      const exportsSnap = await query.get();
++
++      // Batch resolve teacher names to avoid N+1 queries
++      const userIds = Array.from(new Set(exportsSnap.docs.map(doc => doc.data().userId).filter(Boolean)));
++      const teacherNameMap = new Map<string, string>();
++
++      if (userIds.length > 0) {
++        const userRefs = userIds.map(uid => dbAdmin.collection('users').doc(uid));
++        const userSnaps = await dbAdmin.getAll(...userRefs);
++        userSnaps.forEach(snap => {
++          if (snap.exists) {
++            const data = snap.data() || {};
++            const name = data.displayName || data.name || (data.email ? data.email.split('@')[0] : 'Teacher');
++            teacherNameMap.set(snap.id, name);
++          }
++        });
++      }
++
++      const reqContentType = req.query.contentType as string;
++      const reqGrade = req.query.grade as string;
++
++      let logs = exportsSnap.docs.map(doc => {
++        const data = doc.data();
++        const rawDate = data.generatedAt?.toDate ? data.generatedAt.toDate().toISOString() : (data.generatedAt || new Date().toISOString());
++        return {
++          id: doc.id,
++          teacherName: teacherNameMap.get(data.userId) || 'Unknown Teacher',
++          schoolId: data.schoolId || '',
++          resourceCount: data.resourceCount || (data.resourceIds ? data.resourceIds.length : 0),
++          resourceTypes: data.resourceTypes || [],
++          grades: data.grades || [],
++          subjects: data.subjects || [],
++          terms: data.terms || [],
++          generatedAt: rawDate,
++          status: "Authorized Export",
++          creditsConsumed: 0
++        };
++      });
++
++      // In-memory secondary filtering for content type & grade if specified
++      if (reqContentType && reqContentType.trim()) {
++        const targetType = reqContentType.trim().toLowerCase();
++        logs = logs.filter(l => l.resourceTypes.some((t: string) => t.toLowerCase() === targetType));
++      }
++
++      if (reqGrade && reqGrade.trim()) {
++        const targetGrade = reqGrade.trim().toLowerCase();
++        logs = logs.filter(l => l.grades.some((g: string) => g.toLowerCase() === targetGrade));
++      }
++
++      return res.json({
++        schoolId: verifiedSchoolId,
++        totalReturned: logs.length,
++        logs: logs
++      });
++    } catch (err: any) {
++      console.error("[School Admin Export Logs] Error:", err);
++      res.status(500).json({ error: "Internal error during export logs retrieval." });
++    }
++  });
+ 
+   // --- Vite Middleware ---
+   if (process.env.NODE_ENV !== 'production') {

@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-10-18T15:50:58.512Z",
+  "requestSubmitted": true,
+  "backendRoute": "/api/generate",
+  "httpStatus": 200,
+  "modelUsed": "gemini-3.8-flash",
+  "durationMs": 141673,
+  "totalWeeksPreview": 13,
+  "totalPeriodsPreview": 65,
+  "totalWeeksExport": 13,
+  "totalPeriodsExport": 105,
+  "canonicalNodesExpected": 8,
+  "canonicalNodesPreserved": 8,
+  "excessPeriodsAllocated": 57,
+  "csvLines": 106
+}

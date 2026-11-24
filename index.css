@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+:root {
+  /* Centralized Exameno Dark Purple Design Tokens */
+  --color-ecg-bg: #fdfcff;
+  --color-ecg-surface: #ffffff;
+  --color-ecg-primary: #3b1464;
+  --color-ecg-primary-hover: #2e1065;
+  --color-ecg-primary-active: #581c87;
+  --color-ecg-primary-light: #f5f3ff;
+  --color-ecg-primary-border: #e9d5ff;
+  --color-ecg-secondary: #6b21a8;
+  --color-ecg-text: #0f172a;
+  --color-ecg-text-muted: #475569;
+  --color-ecg-border: #000000;
+  --color-ecg-border-subtle: #f1f5f9;
+  --color-ecg-success: #059669;
+  --color-ecg-warning: #d97706;
+  --color-ecg-error: #dc2626;
+  --color-ecg-info: #2563eb;
+  
+  /* Export Semantic Colors */
+  --color-export-pdf: #dc2626;
+  --color-export-word: #2563eb;
+  --color-export-excel: #16a34a;
+  --color-export-moodle: #ea580c;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-mint: #f0fdf4;
+  --color-lavender-subtle: #fdfcff;
+  --color-purple-dark: #3b1464;
+  --color-purple-primary: #4c1d95;
+  --radius-2xl: 1rem;
+  --radius-xl: 0.75rem;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+@layer base {
+  body {
+    @apply bg-[#fdfcff] text-slate-900 font-sans antialiased;
+  }
+  input, textarea, button, select {
+    @apply font-sans;
+  }
+}
+
+@layer components {
+  .app-card {
+    @apply bg-white border border-slate-200 rounded-xl shadow-sm transition-all duration-200 ease-in-out;
+  }
+  
+  .app-card-interactive:hover {
+    @apply border-purple-200 shadow-md -translate-y-0.5;
+  }
+  
+  .app-btn {
+    @apply px-4 py-2.5 rounded-lg border border-transparent font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .app-btn-primary {
+    @apply bg-[#3b1464] text-white hover:bg-[#2e1065] shadow-sm active:scale-[0.98];
+  }
+  
+  .app-btn-secondary {
+    @apply bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-[0.98];
+  }
+
+  .app-btn-outline {
+    @apply bg-transparent text-[#3b1464] border-[#3b1464] hover:bg-purple-50 active:scale-[0.98];
+  }
+
+  .app-input {
+    @apply border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-400 transition-all bg-white text-slate-900 placeholder:text-slate-400;
+  }
+
+  .section-header {
+    @apply flex items-center gap-3 mb-6;
+  }
+
+  .section-title {
+    @apply text-lg font-bold text-slate-900 tracking-tight;
+  }
+
+  .step-number {
+    @apply w-8 h-8 rounded-full flex items-center justify-center text-sm font-black border border-black;
+  }
+
+  /* Cross-browser no-scrollbar utility */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
