@@ -398,7 +398,7 @@ export const ContentDisplay: React.FC<ContentDisplayProps> = ({
  };
 
  const SchemeOfWorkTable: React.FC<{ data: SchemeOfWorkData }> = ({ data }) => (
-  <div className="overflow-x-auto my-8 border border-slate-200 rounded-xl shadow-sm bg-white">
+  <div className="overflow-auto max-h-[70vh] my-8 border border-slate-200 rounded-xl shadow-sm bg-white">
   <table className="min-w-[1600px] w-full divide-y divide-slate-200 text-sm table-fixed">
   <thead className="bg-mint sticky top-0 z-10 border-b border-slate-300">
   <tr>
