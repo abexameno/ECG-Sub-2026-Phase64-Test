@@ -1,5 +1,5 @@
 import { ContentType } from './types.ts';
-import { buildSowLessonScopePrompt } from './services/geminiService.ts';
+import { buildGenerationSystemInstruction, buildSowLessonScopePrompt } from './services/geminiService.ts';
 
 const selectedLesson = {
   sowTitle: 'Grade 8 - Pre-technical Studies - Term 2',
@@ -21,6 +21,22 @@ const selectedLesson = {
 };
 
 describe('SOW lesson generation scope', () => {
+  it('uses the uploaded SOW as curriculum authority without weakening technical integrity checks', () => {
+    const instruction = buildGenerationSystemInstruction(true);
+    expect(instruction).toContain('selected uploaded Scheme of Work is an approved, KICD-derived source');
+    expect(instruction).toContain('Do not perform a second KICD/canonical-curriculum alignment');
+    expect(instruction).toContain('Do not block generation because a separate canonical curriculum record');
+    expect(instruction).toContain('selected lesson identity, provenance, metadata consistency');
+    expect(instruction).toContain('does not authorize generation of a new AI-created Scheme of Work');
+    expect(instruction).not.toContain('Strictly align with KICD, CBC, and CBE standards for Grades 1-10');
+  });
+
+  it('retains canonical curriculum controls for non-uploaded-SOW generation', () => {
+    const instruction = buildGenerationSystemInstruction(false);
+    expect(instruction).toContain('Strictly align with KICD, CBC, and CBE standards for Grades 1-10');
+    expect(instruction).not.toContain('Do not perform a second KICD/canonical-curriculum alignment');
+  });
+
   it.each([
     ContentType.LessonPlan,
     ContentType.LessonNotes,
