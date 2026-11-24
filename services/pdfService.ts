@@ -54,7 +54,9 @@ function cleanText(value: unknown): string {
         return '';
     };
 
-    return toText(value, new WeakSet<object>()).replace(/[*#]/g, '').trim();
+    // Preserve literal curriculum notation (for example C# and 2*3). Markdown
+    // formatting is handled by parseMarkdownToPdfmake, not by deleting characters.
+    return toText(value, new WeakSet<object>()).trim();
 }
 
 function isValidImageUri(uri?: string): boolean {
