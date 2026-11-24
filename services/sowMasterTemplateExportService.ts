@@ -74,7 +74,8 @@ function setCellText(cell: string, value: string): string {
     return cell.replace(/<w:t(\s[^>]*)?>[\s\S]*?<\/w:t>/g, (_match, attrs = '') => {
       if (replaced) return '';
       replaced = true;
-      return `<w:t${attrs} xml:space="preserve">${escaped}</w:t>`;
+      const safeAttrs = String(attrs).replace(/\\s+xml:space=(["']).*?\\1/g, '');
+      return `<w:t${safeAttrs} xml:space="preserve">${escaped}</w:t>`;
     });
   }
   return cell.replace(/<w:p(\s[^>]*)?>/, match => match)
@@ -137,15 +138,17 @@ export function populateSowTemplateDocumentXml(documentXml: string, payload: Sow
   const qaMarker = 'MASTER TEMPLATE — COMPLETION AND QUALITY STANDARD';
   const qaIndex = xml.indexOf(qaMarker);
   if (qaIndex >= 0) {
-    let paragraphStart = Math.max(xml.lastIndexOf('<w:p>', qaIndex), xml.lastIndexOf('<w:p ', qaIndex));
-    const previousParagraphEnd = xml.lastIndexOf('</w:p>', paragraphStart);
-    const previousParagraphStart = Math.max(xml.lastIndexOf('<w:p>', previousParagraphEnd), xml.lastIndexOf('<w:p ', previousParagraphEnd));
-    if (previousParagraphStart >= 0 && xml.slice(previousParagraphStart, previousParagraphEnd).includes('<w:br w:type="page"')) {
-      paragraphStart = previousParagraphStart;
-    }
     const sectionStart = xml.indexOf('<w:sectPr', qaIndex);
-    if (paragraphStart < 0 || sectionStart < 0) throw new Error('SOW_TEMPLATE_QA_SECTION_BOUNDARY_INVALID');
-    xml = xml.slice(0, paragraphStart) + xml.slice(sectionStart);
+    if (sectionStart < 0) throw new Error('SOW_TEMPLATE_QA_SECTION_BOUNDARY_INVALID');
+    // The master template deliberately starts its QA-only page with a page-break
+    // paragraph. Cut from that exact paragraph so the completed SOW retains page 1.
+    const precedingMarkup = xml.slice(0, qaIndex);
+    const pageBreakMatches = [...precedingMarkup.matchAll(/<w:p(?:\s[^>]*)?>(?:(?!<\/w:p>)[\s\S])*?<w:br[^>]*w:type=["']page["'][^>]*>(?:(?!<\/w:p>)[\s\S])*?<\/w:p>/g)];
+    const pageBreak = pageBreakMatches[pageBreakMatches.length - 1];
+    const qaParagraphStart = Math.max(xml.lastIndexOf('<w:p>', qaIndex), xml.lastIndexOf('<w:p ', qaIndex));
+    const cutStart = pageBreak ? pageBreak.index! : qaParagraphStart;
+    if (cutStart < 0 || cutStart >= sectionStart) throw new Error('SOW_TEMPLATE_QA_SECTION_BOUNDARY_INVALID');
+    xml = xml.slice(0, cutStart) + xml.slice(sectionStart);
   }
   // The continuation note is an instruction for the blank master, not SOW content.
   xml = xml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?Continuation page — repeat the ten-column table header[\s\S]*?<\/w:p>/, '');

@@ -1057,8 +1057,9 @@ export async function formatAsDocx(content: GeneratedContent, assessmentExportTy
             spacing: { before: 800, after: 100 }
         }));
         
-        const subTitleText = (content.metadata?.contentType === ContentType.SchemeOfWork && content.schemeOfWorkData?.term)
-            ? `${content.metadata.contentType} (${content.schemeOfWorkData.term})`
+        const sowDataForExport = (content as unknown as { schemeOfWorkData?: { term?: string; entries: any[] } }).schemeOfWorkData;
+        const subTitleText = (content.metadata?.contentType === ContentType.SchemeOfWork && sowDataForExport?.term)
+            ? `${content.metadata.contentType} (${sowDataForExport.term})`
             : content.metadata?.contentType || 'Study Guide';
 
         children.push(new Paragraph({
@@ -1067,7 +1068,7 @@ export async function formatAsDocx(content: GeneratedContent, assessmentExportTy
             spacing: { after: 300 }
         }));
         
-        if (content.schemeOfWorkData) {
+        if (sowDataForExport) {
             const headers = ['Week', 'Lesson', 'Strand', 'Sub-Strand', 'Specific Learning Outcomes', 'Learning Experiences', 'Key Inquiry Questions', 'Learning Resources', 'Assessment Methods', 'Remarks'];
             const headerRow = new TableRow({
                 tableHeader: true,
@@ -1077,7 +1078,7 @@ export async function formatAsDocx(content: GeneratedContent, assessmentExportTy
                 })),
             });
     
-            const dataRows = content.schemeOfWorkData.entries.map(entry => {
+            const dataRows = sowDataForExport.entries.map((entry: any) => {
                 const outcomesVal = entry.learningOutcomes || (entry as any).specificLearningOutcomes || (entry as any).learningOutcomesText || '';
                 const inquiryVal = entry.inquiryQuestions || (entry as any).keyInquiryQuestions || '';
                 const experiencesVal = entry.learningExperiences || (entry as any).content || (entry as any).learningExperience || '';

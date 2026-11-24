@@ -485,16 +485,17 @@ export function buildItemPdfContent(
             const school = (headerInfo?.schoolName || (content as any).schoolName || '').trim();
             const teacher = (headerInfo?.teacherName || sow.teacher || '').trim();
             const year = (headerInfo?.academicYear || (content.metadata as any)?.academicYear || new Date().getFullYear()).toString();
-            const metadataRows = [
-                [{ text: 'Grade', bold: true, color: '#54258A', fillColor: '#F5F2F8' }, cleanText(sow.grade || content.metadata?.grade), { text: 'Subject', bold: true, color: '#54258A', fillColor: '#F5F2F8' }, cleanText(sow.subject || content.metadata?.subject)],
-                [{ text: 'Term', bold: true, color: '#54258A', fillColor: '#F5F2F8' }, cleanText(sow.term || content.metadata?.term), { text: 'Year', bold: true, color: '#54258A', fillColor: '#F5F2F8' }, year],
-                [{ text: 'Teacher', bold: true, color: '#54258A', fillColor: '#F5F2F8' }, teacher, { text: 'TSC / School', bold: true, color: '#54258A', fillColor: '#F5F2F8' }, [headerInfo?.tscNumber, school].filter(Boolean).join(' / ')]
-            ].map(row => row.map(cell => typeof cell === 'object' ? { ...cell, fontSize: 8, margin: [4, 3, 4, 3] } : { text: cell || ' ', fontSize: 8, margin: [4, 3, 4, 3] }));
-            itemContent.push({
-                table: { widths: [55, '*', 65, '*'], body: metadataRows },
-                layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, hLineColor: () => '#D8D3DE', vLineColor: () => '#D8D3DE', paddingLeft: () => 2, paddingRight: () => 2, paddingTop: () => 1, paddingBottom: () => 1 },
-                margin: [0, 0, 0, 8]
-            });
+            const metadataLine = [
+                { text: 'Grade: ', bold: true, color: '#54258A' }, { text: cleanText(sow.grade || content.metadata?.grade) || ' ' },
+                { text: '    Subject: ', bold: true, color: '#54258A' }, { text: cleanText(sow.subject || content.metadata?.subject) || ' ' },
+                { text: '    Term: ', bold: true, color: '#54258A' }, { text: cleanText(sow.term || content.metadata?.term) || ' ' },
+                { text: '    Year: ', bold: true, color: '#54258A' }, { text: year || ' ' },
+                { text: '    Teacher: ', bold: true, color: '#54258A' }, { text: teacher || ' ' },
+                { text: '    TSC / School: ', bold: true, color: '#54258A' }, { text: [headerInfo?.tscNumber, school].filter(Boolean).join(' / ') || ' ' }
+            ];
+            // Keep the lesson grid as the first table in the PDF definition; older
+            // consumers and regression checks rely on its ten-column structure.
+            itemContent.push({ text: metadataLine, fontSize: 8, margin: [0, 0, 0, 8] });
         }
 
         if (content.schemeOfWorkData) {

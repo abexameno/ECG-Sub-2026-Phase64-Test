@@ -54,7 +54,7 @@ describe('Exameno SOW master-template export', () => {
     expect(result).not.toContain('MASTER TEMPLATE — COMPLETION AND QUALITY STANDARD');
     expect(result).not.toContain('Continuation page');
     expect(result).not.toContain('<w:br w:type="page"/>');
-    expect((result.match(/<w:tr>/g) || []).length).toBe(payload.rows.length + 4);
+    expect((result.match(/<w:tr(?:\\s[^>]*)?>/g) || []).length).toBe(payload.rows.length + 4);
   });
 
 });
