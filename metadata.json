@@ -1,6 +1,6 @@
 {
   "name": "Exameno ECG Assistant",
-  "description": "An AI-powered tool for Kenyan teachers to generate curriculum-aligned educational content and create SOW, Lesson Plans, Lesson Notes, Study Guides, Quizzes, Term and Topic Exams, Comprehensive Assessments for grades 1-12, with export to PDF, Word, and Excel.",
+  "description": "A CBC/CBE education content and assessment platform. Teachers upload and manage authoritative Schemes of Work in the SOW Library, then generate lesson resources and assessments from selected SOW lessons. Supports grades Play Group to 12 and PDF, DOCX and CSV workflows.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
